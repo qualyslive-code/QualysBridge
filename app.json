@@ -28,8 +28,13 @@
       "versionCode": 1
     },
     "plugins": [
-      "expo-font",
-      "expo-clipboard"
-    ]
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2a26d79c-9e7b-4785-b2e8-396e912c92ae"
+      }
+    },
+    "owner": "ruth1233"
   }
 }
