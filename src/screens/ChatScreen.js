@@ -672,6 +672,7 @@ const cs = StyleSheet.create({
     borderRadius: 12,
   },
   sendErrorText: { fontSize: 12, color: C.danger, lineHeight: 18 },
+  blockedBar: {
     margin: 14, padding: 11, paddingHorizontal: 16,
     backgroundColor: C.dangerD, borderWidth: 1, borderColor: C.danger + '25',
     borderRadius: 14, alignItems: 'center',

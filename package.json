@@ -15,6 +15,7 @@
     "@expo-google-fonts/syne": "^0.2.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.45.0",
+    "babel-preset-expo": "~56.0.0",
     "expo": "~56.0.0",
     "expo-clipboard": "~56.0.3",
     "expo-font": "~56.0.5",
