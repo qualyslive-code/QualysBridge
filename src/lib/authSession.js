@@ -14,13 +14,20 @@
 //     defensive fallback for the rarer case where the OS hands the
 //     qualysfamily://login-callback redirect straight to the app instead of
 //     resolving through the WebBrowser session (mainly an Android edge case).
-// Both paths end up calling exchangeCodeForSession with the same `code`
-// param, so the logic only needs to live once.
+//
+// FIX (silent failure, no diagnostics): the redirect can come back in two
+// shapes depending on Supabase's flow — PKCE sends `?code=...` in the query
+// string, but some configs/paths send tokens directly as a `#access_token=
+// ...&refresh_token=...` URL fragment instead. expo-linking's Linking.parse()
+// only reads the query string, never the fragment — so if Supabase used the
+// fragment shape, queryParams.code was always undefined and this silently
+// returned { ok: false } with no error message at all, which is exactly why
+// "Sign-in failed" carried no useful detail. Now handles both shapes.
 import * as Linking from 'expo-linking';
 import { supabase } from './supabase';
 
 export async function createSessionFromUrl(url) {
-  if (!url) return { ok: false };
+  if (!url) return { ok: false, error: 'No redirect URL received' };
 
   let queryParams;
   try {
@@ -36,20 +43,43 @@ export async function createSessionFromUrl(url) {
     return { ok: false, error: msg };
   }
 
-  if (!queryParams?.code) {
-    // Not every URL this fires on is the OAuth callback (Linking 'url'
-    // fires for any deep link into the app) — no code just means "not
-    // ours", not a failure.
-    return { ok: false };
+  // PKCE flow: ?code=... in the query string.
+  if (queryParams?.code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(queryParams.code);
+    if (error) {
+      console.error('[authSession] exchangeCodeForSession', error);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
   }
 
-  const { error } = await supabase.auth.exchangeCodeForSession(queryParams.code);
-  if (error) {
-    console.error('[authSession] exchangeCodeForSession', error);
-    return { ok: false, error: error.message };
+  // Implicit flow fallback: tokens in the #fragment, which Linking.parse()
+  // never populates into queryParams since it only reads the query string.
+  // Parse the fragment manually.
+  const hashIndex = url.indexOf('#');
+  if (hashIndex !== -1) {
+    const fragment = url.slice(hashIndex + 1);
+    const fragParams = Object.fromEntries(new URLSearchParams(fragment));
+    if (fragParams.access_token && fragParams.refresh_token) {
+      const { error } = await supabase.auth.setSession({
+        access_token: fragParams.access_token,
+        refresh_token: fragParams.refresh_token,
+      });
+      if (error) {
+        console.error('[authSession] setSession (fragment tokens)', error);
+        return { ok: false, error: error.message };
+      }
+      return { ok: true };
+    }
+    if (fragParams.error) {
+      const msg = fragParams.error_description ?? fragParams.error;
+      console.error('[authSession] OAuth provider returned an error (fragment)', msg);
+      return { ok: false, error: msg };
+    }
   }
 
-  // Session is now persisted via supabase.auth.onAuthStateChange, which
-  // App.js already listens to — that's what actually drives navigation.
-  return { ok: true };
+  // Not every URL this fires on is the OAuth callback (Linking 'url' fires
+  // for any deep link into the app) — no code/tokens just means "not ours".
+  console.warn('[authSession] redirect had neither code nor tokens', url);
+  return { ok: false, error: 'No auth code or tokens in redirect' };
 }

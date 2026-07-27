@@ -67,7 +67,7 @@ export default function LoginScreen() {
 
     if (res.type === 'success' && res.url) {
       const result = await createSessionFromUrl(res.url);
-      if (!result.ok) setErr('Sign-in failed — try again.');
+      if (!result.ok) setErr('Sign-in failed: ' + (result.error || 'unknown error'));
       // On success there's nothing else to do here: App.js's
       // supabase.auth.onAuthStateChange listener is what actually drives
       // navigation once the session lands.
