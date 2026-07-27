@@ -15,12 +15,15 @@ import * as SplashScreen from 'expo-splash-screen';
 import { C } from './src/theme';
 import { supabase } from './src/lib/supabase';
 import { createSessionFromUrl } from './src/lib/authSession';
+import { CallProvider } from './src/lib/CallContext';
 
-import LoginScreen          from './src/screens/LoginScreen';
+import LoginScreen           from './src/screens/LoginScreen';
 import { ProfileSetupScreen, QIDRevealScreen } from './src/screens/ProfileSetupScreen';
-import HomeScreen           from './src/screens/HomeScreen';
-import ChatScreen           from './src/screens/ChatScreen';
-import SettingsScreen       from './src/screens/SettingsScreen';
+import HomeScreen            from './src/screens/HomeScreen';
+import ChatScreen            from './src/screens/ChatScreen';
+import SettingsScreen        from './src/screens/SettingsScreen';
+import CallOverlay           from './src/screens/CallOverlay';
+import IncomingCallOverlay   from './src/screens/IncomingCallOverlay';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -50,7 +53,6 @@ export default function App() {
   const [user,    setUser]    = useState(null);
   const [chat,    setChat]    = useState(null);      // active contact
   const [settings, setSettings] = useState(false);
-
   const [fontsLoaded] = useFonts({ Syne_700Bold, Syne_800ExtraBold });
   const [interLoaded] = useInterFonts({
     Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
@@ -134,35 +136,32 @@ export default function App() {
 
   if (!fontsLoaded || !interLoaded || step === 'checking') return null;
 
-  // Settings overlay
-  if (settings && user) return (
-    <SafeAreaProvider>
-      <View style={s.root} onLayout={onLayoutRoot}>
-        <SettingsScreen
-          user={user}
-          onBack={() => setSettings(false)}
-          onLogout={() => { setSettings(false); }} // actual session teardown now happens in SettingsScreen.signOut(); onAuthStateChange drives step back to 'login'
-        />
-      </View>
-    </SafeAreaProvider>
-  );
-
-  // Chat overlay
-  if (chat && user) return (
-    <SafeAreaProvider>
-      <View style={s.root} onLayout={onLayoutRoot}>
-        <ChatScreen
-          contact={chat}
-          myUser={user}
-          onBack={() => setChat(null)}
-        />
-      </View>
-    </SafeAreaProvider>
-  );
-
-  return (
-    <SafeAreaProvider>
-      <View style={s.root} onLayout={onLayoutRoot}>
+  // Single render path now, so CallProvider + the two call overlays only
+  // ever mount once per app session regardless of which screen (settings,
+  // chat, or the main login/profile/reveal/home stack) is showing —
+  // previously these were three separate early-return branches, which
+  // would have meant three separate CallProvider mounts (and three
+  // separate /calls/signal sockets) if each had been wrapped individually.
+  let content;
+  if (settings && user) {
+    content = (
+      <SettingsScreen
+        user={user}
+        onBack={() => setSettings(false)}
+        onLogout={() => { setSettings(false); }} // actual session teardown now happens in SettingsScreen.signOut(); onAuthStateChange drives step back to 'login'
+      />
+    );
+  } else if (chat && user) {
+    content = (
+      <ChatScreen
+        contact={chat}
+        myUser={user}
+        onBack={() => setChat(null)}
+      />
+    );
+  } else {
+    content = (
+      <>
         {step === 'login'   && (
           <LoginScreen />
         )}
@@ -186,7 +185,19 @@ export default function App() {
             onLogout={() => {}} // unused now — sign-out flows through Settings' real signOut(); kept as a no-op so HomeScreen's existing prop contract doesn't need to change
           />
         )}
-      </View>
+      </>
+    );
+  }
+
+  return (
+    <SafeAreaProvider>
+      <CallProvider myUser={user}>
+        <View style={s.root} onLayout={onLayoutRoot}>
+          {content}
+        </View>
+        <IncomingCallOverlay />
+        <CallOverlay />
+      </CallProvider>
     </SafeAreaProvider>
   );
 }

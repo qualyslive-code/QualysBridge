@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, DESTRUCT } from '../theme';
 import { Av, Tag, IBtn, E2EBar, Typing, WallNotice, TCard } from '../components/atoms';
+import { useCallContext } from '../lib/CallContext';
 import {
   VoiceNote, ImageBubble, VideoBubble, Lightbox, VideoPlayer,
 } from '../components/bubbles';
@@ -100,87 +101,6 @@ function AttachTray({ onImage, onVideo, onClose }) {
   );
 }
 
-// ── CALL OVERLAY ──────────────────────────────────────────────────────────────
-function CallOverlay({ contact, mode, onEnd }) {
-  const [phase,   setPhase]   = useState('ringing');
-  const [elapsed, setElapsed] = useState(0);
-  const [muted,   setMuted]   = useState(false);
-  const [camOff,  setCamOff]  = useState(false);
-  const [speaker, setSpeaker] = useState(true);
-  const iv = useRef(null);
-
-  useEffect(() => {
-    const t = setTimeout(() => setPhase('active'), 1800);
-    return () => clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    if (phase !== 'active') return;
-    iv.current = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(iv.current);
-  }, [phase]);
-
-  const fmtDur = (s) =>
-    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-
-  const CONTROLS = [
-    { icon: muted ? '🔇' : '🎙️',  label: muted ? 'Unmute' : 'Mute',       action: () => setMuted((v) => !v),    active: muted },
-    { icon: speaker ? '🔊' : '🔈', label: speaker ? 'Speaker' : 'Earpiece', action: () => setSpeaker((v) => !v), active: speaker },
-    ...(mode === 'video'
-      ? [{ icon: camOff ? '📷' : '📸', label: camOff ? 'Cam off' : 'Camera', action: () => setCamOff((v) => !v), active: camOff }]
-      : []),
-    { icon: '📞', label: 'End', action: () => { setPhase('ended'); setTimeout(onEnd, 700); }, end: true },
-  ];
-
-  return (
-    <View style={co.overlay}>
-      <Text style={co.status}>
-        {phase === 'ringing' ? 'CALLING…' : phase === 'active' ? fmtDur(elapsed) : 'CALL ENDED'}
-      </Text>
-      <View style={{ position: 'relative', marginBottom: 24 }}>
-        <Av name={contact.name} color={contact.color} size={96} />
-      </View>
-      <Text style={co.name}>{contact.name}</Text>
-      <Text style={co.subLabel}>
-        {mode === 'video' ? 'Video call' : 'Voice call'}
-      </Text>
-
-      {mode === 'video' && phase === 'active' && (
-        <View style={co.videoPreview}>
-          <Text style={{ fontSize: 60, opacity: 0.7 }}>
-            {contact.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
-          </Text>
-          <View style={co.pip}>
-            <Text style={{ fontSize: 20 }}>{camOff ? '📷' : '🤳'}</Text>
-          </View>
-        </View>
-      )}
-
-      <View style={{ flex: 1 }} />
-      <View style={co.controls}>
-        {CONTROLS.map(({ icon, label, action, active, end }) => (
-          <View key={label} style={co.controlItem}>
-            <TouchableOpacity
-              onPress={action}
-              style={[
-                co.controlBtn,
-                end && { backgroundColor: C.danger },
-                active && !end && { backgroundColor: C.accentD, borderColor: C.borderM },
-              ]}
-              activeOpacity={0.8}
-            >
-              <Text style={{ fontSize: 22, color: end ? '#fff' : active ? C.accentL : C.sub }}>
-                {icon}
-              </Text>
-            </TouchableOpacity>
-            <Text style={[co.controlLabel, end && { color: C.danger }]}>{label}</Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
 // ── CHAT SCREEN ───────────────────────────────────────────────────────────────
 // contact.id and myUser.id are now real auth.users UUIDs (Supabase), not the
 // old QID strings from KNOWN — see ProfileSetupScreen / LoginScreen for where
@@ -188,6 +108,7 @@ function CallOverlay({ contact, mode, onEnd }) {
 export default function ChatScreen({ contact, myUser, onBack }) {
   const cid = contact.id; // the OTHER user's id; conversationId is resolved below, not the same thing
   const [conversationId, setConversationId] = useState(null);
+  const { startOutgoingCall } = useCallContext();
   const [msgs,       setMsgs]       = useState([]);
   const [input,      setInput]      = useState('');
   const [typing,     setTyping]     = useState(false); // no longer driven by simReply — left wired for a future real typing-indicator channel
@@ -198,7 +119,6 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   const [online,     setOnline]     = useState({ on: false, last: null });
   const [showAttach, setShowAttach] = useState(false);
   const [recording,  setRecording]  = useState(false);
-  const [callMode,   setCallMode]   = useState(null);
   const [lightbox,   setLightbox]   = useState(null);
   const [videoPlay,  setVideoPlay]  = useState(null);
   const [sentCount,  setSentCount]  = useState(0);
@@ -518,8 +438,8 @@ export default function ChatScreen({ contact, myUser, onBack }) {
           <TouchableOpacity onPress={() => setShowMoney(true)} style={cs.moneyBtn} activeOpacity={0.8}>
             <Text style={{ color: C.money, fontSize: 14 }}>💸</Text>
           </TouchableOpacity>
-          <IBtn icon="📞" onPress={() => setCallMode('voice')} />
-          <IBtn icon="📹" onPress={() => setCallMode('video')} />
+          <IBtn icon="📞" onPress={() => startOutgoingCall(contact.id, conversationId, 'voice', contact)} />
+          <IBtn icon="📹" onPress={() => startOutgoingCall(contact.id, conversationId, 'video', contact)} />
           <IBtn
             icon={blocked ? '🔓' : '🚫'} danger={!blocked}
             onPress={toggleBlock}
@@ -663,7 +583,6 @@ export default function ChatScreen({ contact, myUser, onBack }) {
 
       {/* Overlays */}
       {showRep && <ReportModal contact={contact} myUser={myUser} onClose={() => setShowRep(false)} />}
-      {callMode && <CallOverlay contact={contact} mode={callMode} onEnd={() => setCallMode(null)} />}
       {lightbox  && <Lightbox msg={lightbox} onClose={() => setLightbox(null)} />}
       {videoPlay && <VideoPlayer msg={videoPlay} onClose={() => setVideoPlay(null)} />}
     </View>
