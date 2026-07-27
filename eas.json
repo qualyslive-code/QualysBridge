@@ -9,7 +9,8 @@
       "ios": { "simulator": true },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://cfkujevobwbbieochzsh.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNma3VqZXZvYndiYmllb2NoenNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3Njk1MTQsImV4cCI6MjA5ODM0NTUxNH0.nzUIpBcr7YX0wyJTJWXkRIIV3Awe0_vajdSNWPvpgTA"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNma3VqZXZvYndiYmllb2NoenNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3Njk1MTQsImV4cCI6MjA5ODM0NTUxNH0.nzUIpBcr7YX0wyJTJWXkRIIV3Awe0_vajdSNWPvpgTA",
+        "EXPO_PUBLIC_API_URL": "https://qualysbridge-backend-production.up.railway.app"
       }
     },
     "preview": {
@@ -17,14 +18,16 @@
       "android": { "buildType": "apk" },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://cfkujevobwbbieochzsh.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNma3VqZXZvYndiYmllb2NoenNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3Njk1MTQsImV4cCI6MjA5ODM0NTUxNH0.nzUIpBcr7YX0wyJTJWXkRIIV3Awe0_vajdSNWPvpgTA"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNma3VqZXZvYndiYmllb2NoenNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3Njk1MTQsImV4cCI6MjA5ODM0NTUxNH0.nzUIpBcr7YX0wyJTJWXkRIIV3Awe0_vajdSNWPvpgTA",
+        "EXPO_PUBLIC_API_URL": "https://qualysbridge-backend-production.up.railway.app"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://cfkujevobwbbieochzsh.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNma3VqZXZvYndiYmllb2NoenNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3Njk1MTQsImV4cCI6MjA5ODM0NTUxNH0.nzUIpBcr7YX0wyJTJWXkRIIV3Awe0_vajdSNWPvpgTA"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNma3VqZXZvYndiYmllb2NoenNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3Njk1MTQsImV4cCI6MjA5ODM0NTUxNH0.nzUIpBcr7YX0wyJTJWXkRIIV3Awe0_vajdSNWPvpgTA",
+        "EXPO_PUBLIC_API_URL": "https://qualysbridge-backend-production.up.railway.app"
       }
     }
   },

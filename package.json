@@ -24,7 +24,7 @@
     "expo-linking": "~56.0.12",
     "expo-sharing": "~56.0.14",
     "expo-splash-screen": "~56.0.10",
-    "expo-web-browser": "~56.0.5",
+    "expo-web-browser": "~56.0.6",
     "react": "19.2.3",
     "react-native": "0.85.3",
     "react-native-safe-area-context": "~5.7.0",

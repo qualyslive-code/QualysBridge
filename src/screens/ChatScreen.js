@@ -14,6 +14,8 @@ import {
 } from '../components/bubbles';
 import { ReportModal, SendMoneyScreen } from './ModalsAndOverlays';
 import { supabase } from '../lib/supabase';
+import { createPaypalOrder, capturePaypalOrder } from '../lib/api';
+import * as WebBrowser from 'expo-web-browser';
 import { uid, ago } from '../utils';
 
 // Currency symbol lookup — the real `message` table only stores
@@ -387,16 +389,34 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   // success; SendMoneyScreen uses the returned result to show its own
   // success/error state instead of a hardcoded setTimeout.
   const onMoneySent = async (amount, curr, note) => {
-    const result = await sendMessage({
-      p_type: 'transfer',
-      p_body: `Sent ${CURRENCY_SYM[curr.code] ?? ''}${amount}`,
-      p_transfer_amount: amount,
-      p_transfer_currency_code: curr.code,
-      p_transfer_note: note,
-      p_transfer_status: 'sent',
+    if (!conversationId) return { ok: false, kind: 'no_conversation' };
+
+    const orderRes = await createPaypalOrder({
+      conversationId,
+      receiverId: cid,
+      amount,
+      currencyCode: curr.code,
+      note,
     });
-    if (result.ok) setShowMoney(false);
-    return result;
+    if (!orderRes.ok || !orderRes.data?.approveUrl) {
+      return { ok: false, kind: orderRes.kind || 'create_failed' };
+    }
+
+    const browserResult = await WebBrowser.openAuthSessionAsync(
+      orderRes.data.approveUrl,
+      'qualysfamily://paypal-return'
+    );
+    if (browserResult.type !== 'success') {
+      return { ok: false, kind: 'cancelled' };
+    }
+
+    const captureRes = await capturePaypalOrder({ orderId: orderRes.data.orderId });
+    if (!captureRes.ok) {
+      return { ok: false, kind: captureRes.kind || 'capture_failed' };
+    }
+
+    if (captureRes.data?.ok) setShowMoney(false);
+    return { ok: !!captureRes.data?.ok, kind: captureRes.data?.ok ? undefined : 'declined' };
   };
 
   const toggleBlock = async () => {
