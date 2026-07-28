@@ -1,4 +1,4 @@
-// Qualys Family App — Theme
+// QualysBridge — Theme
 // Direct port of the C object from Qualy-v4.jsx
 
 export const C = {

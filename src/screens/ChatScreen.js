@@ -1,4 +1,4 @@
-// Qualys Family App — ChatScreen
+// QualysBridge — ChatScreen
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -324,7 +324,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
 
     const browserResult = await WebBrowser.openAuthSessionAsync(
       orderRes.data.approveUrl,
-      'qualysfamily://paypal-return'
+      'qualysbridge://paypal-return'
     );
     if (browserResult.type !== 'success') {
       return { ok: false, kind: 'cancelled' };

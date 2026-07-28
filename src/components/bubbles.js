@@ -1,4 +1,4 @@
-// Qualys Family App — Message Bubble Components
+// QualysBridge — Message Bubble Components
 
 import React, { useState, useEffect, useRef } from 'react';
 import {

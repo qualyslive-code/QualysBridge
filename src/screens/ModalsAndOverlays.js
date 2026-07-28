@@ -1,4 +1,4 @@
-// Qualys Family App — Modals & Overlay Screens
+// QualysBridge — Modals & Overlay Screens
 
 import React, { useState } from 'react';
 import {

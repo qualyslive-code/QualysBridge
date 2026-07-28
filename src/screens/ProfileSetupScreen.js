@@ -1,4 +1,4 @@
-// Qualys Family App — ProfileSetupScreen
+// QualysBridge — ProfileSetupScreen
 
 import React, { useState } from 'react';
 import {

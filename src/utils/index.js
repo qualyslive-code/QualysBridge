@@ -1,4 +1,4 @@
-// Qualys Family App — Utils
+// QualysBridge — Utils
 
 export const uid = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

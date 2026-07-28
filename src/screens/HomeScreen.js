@@ -1,4 +1,4 @@
-// Qualys Family App — HomeScreen
+// QualysBridge — HomeScreen
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {

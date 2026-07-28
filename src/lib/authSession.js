@@ -1,5 +1,5 @@
 // src/lib/authSession.js
-// Qualys Family — shared OAuth redirect handler.
+// QualysBridge — shared OAuth redirect handler.
 //
 // FIX (was missing entirely): supabase.auth.signInWithOAuth() on React
 // Native only returns a URL — it does not open anything by itself the way
@@ -12,7 +12,7 @@
 //   - LoginScreen: the direct return value of WebBrowser.openAuthSessionAsync
 //   - App.js: a Linking 'url' event / Linking.getInitialURL(), as a
 //     defensive fallback for the rarer case where the OS hands the
-//     qualysfamily://login-callback redirect straight to the app instead of
+//     qualysbridge://login-callback redirect straight to the app instead of
 //     resolving through the WebBrowser session (mainly an Android edge case).
 //
 // FIX (silent failure, no diagnostics): the redirect can come back in two

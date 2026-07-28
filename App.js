@@ -1,4 +1,4 @@
-// Qualys Family App — App.js (EAS-ready root)
+// QualysBridge — App.js (EAS-ready root)
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
@@ -118,7 +118,7 @@ export default function App() {
 
   // FIX (part of #1 — auth flow was non-functional): defensive fallback
   // alongside LoginScreen's WebBrowser.openAuthSessionAsync result handling.
-  // Covers the case where the OS hands the qualysfamily://login-callback
+  // Covers the case where the OS hands the qualysbridge://login-callback
   // redirect straight to the app — cold start, or Android intercepting the
   // custom scheme outside the WebBrowser session — instead of resolving
   // through that promise. createSessionFromUrl no-ops harmlessly if the

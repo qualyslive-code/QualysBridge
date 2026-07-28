@@ -1,5 +1,5 @@
 {
-  "name": "qualys-family",
+  "name": "qualys-bridge",
   "version": "1.0.0",
   "main": "expo/AppEntry",
   "scripts": {

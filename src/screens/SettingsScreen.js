@@ -1,4 +1,4 @@
-// Qualys Family App — SettingsScreen
+// QualysBridge — SettingsScreen
 
 import React, { useState } from 'react';
 import {

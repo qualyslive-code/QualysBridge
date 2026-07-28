@@ -1,4 +1,4 @@
-// Qualys Family App — Atom Components
+// QualysBridge — Atom Components
 // RN port: div → View, span/p → Text, button → TouchableOpacity,
 //          inline CSS → StyleSheet, keyframes → Animated,
 //          GRAIN_URL dropped (no SVG filter support in RN; replaced by subtle opacity layer)

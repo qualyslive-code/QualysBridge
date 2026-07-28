@@ -1,5 +1,5 @@
 // src/lib/supabase.js
-// Single Supabase client for Qualys Family. Anon key only — this ships
+// Single Supabase client for QualysBridge. Anon key only — this ships
 // inside the app bundle, so it must never carry a service_role key.
 // (Same pattern as Qualys Live's lib/supabase.js — these are separate
 // Supabase projects for separate products, not the same backend.)

@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Qualys Family",
-    "slug": "qualys-family",
-    "scheme": "qualysfamily",
+    "name": "QualysBridge",
+    "slug": "qualys-bridge",
+    "scheme": "qualysbridge",
     "version": "1.0.0",
     "sdkVersion": "56.0.0",
     "orientation": "portrait",
@@ -16,7 +16,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.qualys.family",
+      "bundleIdentifier": "com.qualys.bridge",
       "buildNumber": "1"
     },
     "android": {
@@ -24,7 +24,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#07070F"
       },
-      "package": "com.qualys.family",
+      "package": "com.qualys.bridge",
       "versionCode": 1
     },
     "plugins": [

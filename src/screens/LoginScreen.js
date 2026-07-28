@@ -1,4 +1,4 @@
-// Qualys Family App — LoginScreen
+// QualysBridge — LoginScreen
 
 import React, { useState } from 'react';
 import {
@@ -12,7 +12,7 @@ import { PBtn, Spin } from '../components/atoms';
 import { supabase } from '../lib/supabase';
 import { createSessionFromUrl } from '../lib/authSession';
 
-const REDIRECT_TO = 'qualysfamily://login-callback';
+const REDIRECT_TO = 'qualysbridge://login-callback';
 
 // FIX (was false claims): "E2E encrypted" and "Zero-fee transfers" described
 // capabilities that don't exist yet — messages/email are stored as plain
