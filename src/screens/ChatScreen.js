@@ -15,6 +15,8 @@ import {
 } from '../components/bubbles';
 import { ReportModal, SendMoneyScreen } from './ModalsAndOverlays';
 import { supabase } from '../lib/supabase';
+import * as SecureStore from 'expo-secure-store';
+import { encryptMessage, decryptMessage, isEncryptedPayload } from '../lib/e2e';
 import { createPaypalOrder, capturePaypalOrder } from '../lib/api';
 import * as WebBrowser from 'expo-web-browser';
 import { uid, ago } from '../utils';
@@ -125,6 +127,9 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   const [theyReplied,setTheyReplied]= useState(false);
   const [trust,      setTrust]      = useState('new');
   const [sendError,  setSendError]  = useState(null);
+  const [myPrivateKey, setMyPrivateKey] = useState(null);
+  const [contactPublicKey, setContactPublicKey] = useState(null);
+  const [decrypted, setDecrypted] = useState({});
   const flatRef = useRef(null);
   const insets  = useSafeAreaInsets();
 
@@ -175,6 +180,12 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       // not an error. mutual/pending come straight from the view's `status`.
       setTrust(trustRow?.status ?? 'new');
 
+      const priv = await SecureStore.getItemAsync(`e2e_sk_${myUser.id}`);
+      if (isMounted) setMyPrivateKey(priv);
+      const { data: contactRow } = await supabase
+        .from('app_user_public').select('public_key').eq('id', cid).maybeSingle();
+      if (isMounted) setContactPublicKey(contactRow?.public_key ?? null);
+
       // mark_conversation_read mirrors DB.markRead(cid) exactly
       await supabase.rpc('mark_conversation_read', { p_conversation_id: convId });
     }
@@ -211,6 +222,22 @@ export default function ChatScreen({ contact, myUser, onBack }) {
 
     return () => { supabase.removeChannel(channel); };
   }, [conversationId, cid]);
+
+  // ── Decrypt: lazily decrypt any encrypted messages once keys are available ─────
+  useEffect(() => {
+    if (!myPrivateKey || !contactPublicKey) return;
+    const pending = msgs.filter(
+      (m) => m.type === 'text' && isEncryptedPayload(m.body) && decrypted[m.id] === undefined
+    );
+    if (!pending.length) return;
+    let cancelled = false;
+    (async () => {
+      const updates = {};
+      for (const m of pending) updates[m.id] = await decryptMessage(m.body, contactPublicKey, myPrivateKey);
+      if (!cancelled) setDecrypted((prev) => ({ ...prev, ...updates }));
+    })();
+    return () => { cancelled = true; };
+  }, [msgs, myPrivateKey, contactPublicKey]);
 
   // ── Presence heartbeat: tell the backend we're online while this screen is mounted ──
   useEffect(() => {
@@ -255,13 +282,19 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   const sendText = async () => {
     const t = input.trim();
     if (!t || blocked || walled) return;
+    if (!myPrivateKey || !contactPublicKey) { setSendError('no_keys'); return; }
     setInput('');
-    // FIX: was fire-and-forget — sendError was set on failure but nothing
-    // rendered it for the plain-text path. Now awaits result and keeps the
-    // message text in a local so the user can retry if it fails.
+    let bodyToSend;
+    try {
+      bodyToSend = await encryptMessage(t, contactPublicKey, myPrivateKey);
+    } catch (err) {
+      console.error('[ChatScreen] encrypt', err);
+      setSendError('no_keys');
+      return;
+    }
     const result = await sendMessage({
       p_type: 'text',
-      p_body: t,
+      p_body: bodyToSend,
       p_self_destruct_option: destruct !== 'Off' ? destruct : null,
     });
     if (!result.ok) {
@@ -387,7 +420,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
           >
             {/* FIX: was m.text — the column is `body`. */}
             <Text style={[ms.bubbleText, fromMe ? { color: '#fff' } : { color: C.text }]}>
-              {m.body}
+              {isEncryptedPayload(m.body) ? (decrypted[m.id] ?? '🔒 Decrypting...') : m.body}
             </Text>
             <View style={ms.bubbleMeta}>
               <Text style={[ms.metaTime, fromMe ? { color: 'rgba(255,255,255,0.38)' } : { color: C.dim }]}>
@@ -574,6 +607,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
           >
             <Text style={cs.sendErrorText}>
               {sendError === 'blocked' ? `Can't send — you or ${contact.name.split(' ')[0]} has blocked the other.`
+                : sendError === 'no_keys' ? 'Encryption keys not ready yet — try again in a moment.'
                 : sendError === 'walled' ? `${contact.name.split(' ')[0]} hasn't replied yet — message not sent.`
                 : '⚠️ Message not sent — tap to dismiss, then try again.'}
             </Text>
