@@ -31,7 +31,7 @@
       "expo-font",
       "expo-web-browser",
       [
-        "react-native-webrtc",
+        "@config-plugins/react-native-webrtc",
         {
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera for video calls",
           "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for calls"
