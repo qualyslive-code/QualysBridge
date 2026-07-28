@@ -10,6 +10,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, PALETTE } from '../theme';
 import { PBtn } from '../components/atoms';
 import { supabase } from '../lib/supabase';
+import sodium from 'react-native-libsodium';
+import * as SecureStore from 'expo-secure-store';
 
 export function ProfileSetupScreen({ gUser, onDone }) {
   const [name,  setName]  = useState(gUser?.name?.split(' ')[0] ?? '');
@@ -34,6 +36,22 @@ export function ProfileSetupScreen({ gUser, onDone }) {
       setErr('Could not create your profile — try again.');
       return;
     }
+    await sodium.ready;
+    const keypair = sodium.crypto_box_keypair();
+    const privateKeyB64 = sodium.to_base64(keypair.privateKey);
+    const publicKeyB64 = sodium.to_base64(keypair.publicKey);
+
+    await SecureStore.setItemAsync(`e2e_privkey_${row.id}`, privateKeyB64);
+
+    const { error: keyError } = await supabase
+      .from('app_user')
+      .update({ public_key: publicKeyB64 })
+      .eq('id', row.id);
+
+    if (keyError) {
+      console.warn('[e2e] failed to save public_key:', keyError);
+    }
+
     onDone({
       id: row.id,
       email: row.email,
