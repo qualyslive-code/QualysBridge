@@ -6,7 +6,10 @@ import {
   ScrollView, Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { C } from '../theme';
+import { getMediaDownloadUrl } from '../lib/api';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -82,95 +85,151 @@ export const VoiceNote = ({ msg, fromMe, contactColor }) => {
 };
 
 // ── IMAGE BUBBLE ──────────────────────────────────────────────────────────────
-export const ImageBubble = ({ msg, fromMe, onExpand }) => (
-  <TouchableOpacity
-    onPress={() => onExpand(msg)}
-    style={[fromMe ? styles.bubbleFromMe : styles.bubbleFromThem, { overflow: 'hidden', maxWidth: 220 }]}
-    activeOpacity={0.9}
-  >
-    <LinearGradient
-      colors={msg.imgGradient ?? [C.s3, C.s2]}
-      style={styles.imgFrame}
+// msg.image_asset_url is a private storage `path` (not a URL) — resolve it
+// to a short-lived signed URL via the bridge before rendering. Falls back
+// to the old gradient placeholder while resolving or if there's no path
+// (e.g. legacy demo rows).
+export const ImageBubble = ({ msg, fromMe, onExpand }) => {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (msg.image_asset_url) {
+      getMediaDownloadUrl({ path: msg.image_asset_url }).then((res) => {
+        if (!cancelled && res.ok) setUrl(res.data.signedUrl);
+      });
+    }
+    return () => { cancelled = true; };
+  }, [msg.image_asset_url]);
+
+  return (
+    <TouchableOpacity
+      onPress={() => onExpand(msg)}
+      style={[fromMe ? styles.bubbleFromMe : styles.bubbleFromThem, { overflow: 'hidden', maxWidth: 220 }]}
+      activeOpacity={0.9}
     >
-      <Text style={{ fontSize: 48 }}>{msg.imgEmoji ?? '🖼️'}</Text>
-    </LinearGradient>
-    <View style={styles.mediaBadge}>
-      <Text style={styles.mediaBadgeText}>⤢ Tap</Text>
-    </View>
-  </TouchableOpacity>
-);
+      {url ? (
+        <Image source={{ uri: url }} style={styles.imgFrame} contentFit="cover" />
+      ) : (
+        <LinearGradient colors={msg.imgGradient ?? [C.s3, C.s2]} style={styles.imgFrame}>
+          <Text style={{ fontSize: 48 }}>{msg.imgEmoji ?? '🖼️'}</Text>
+        </LinearGradient>
+      )}
+      <View style={styles.mediaBadge}>
+        <Text style={styles.mediaBadgeText}>⤢ Tap</Text>
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 // ── VIDEO BUBBLE ──────────────────────────────────────────────────────────────
-export const VideoBubble = ({ msg, fromMe, onPlay }) => (
-  <TouchableOpacity
-    onPress={() => onPlay(msg)}
-    style={[fromMe ? styles.bubbleFromMe : styles.bubbleFromThem, { overflow: 'hidden', maxWidth: 220 }]}
-    activeOpacity={0.9}
-  >
-    <LinearGradient
-      colors={msg.vidGradient ?? ['#1a1a2e', '#0f0f1e']}
-      style={styles.imgFrame}
+// Thumbnail generation is a separate future step — this still shows the
+// gradient tile as a poster, but the tap now opens a real playable video
+// (see VideoPlayer below) instead of a fake scrubber.
+export const VideoBubble = ({ msg, fromMe, onPlay }) => {
+  const [thumbUrl, setThumbUrl] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (msg.video_thumb_url) {
+      getMediaDownloadUrl({ path: msg.video_thumb_url }).then((res) => {
+        if (!cancelled && res.ok) setThumbUrl(res.data.signedUrl);
+      });
+    }
+    return () => { cancelled = true; };
+  }, [msg.video_thumb_url]);
+
+  return (
+    <TouchableOpacity
+      onPress={() => onPlay(msg)}
+      style={[fromMe ? styles.bubbleFromMe : styles.bubbleFromThem, { overflow: 'hidden', maxWidth: 220 }]}
+      activeOpacity={0.9}
     >
-      <Text style={{ fontSize: 44 }}>{msg.vidEmoji ?? '🎬'}</Text>
-      <View style={styles.playCircle}>
-        <Text style={{ fontSize: 20, color: '#fff', paddingLeft: 3 }}>▶</Text>
-      </View>
-      <View style={styles.mediaBadge}>
-        <Text style={styles.mediaBadgeText}>{msg.duration ?? '0:15'}</Text>
-      </View>
-    </LinearGradient>
-  </TouchableOpacity>
-);
+      {thumbUrl ? (
+        <View style={styles.imgFrame}>
+          <Image source={{ uri: thumbUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          <View style={styles.playCircle}>
+            <Text style={{ fontSize: 20, color: '#fff', paddingLeft: 3 }}>▶</Text>
+          </View>
+          <View style={styles.mediaBadge}>
+            <Text style={styles.mediaBadgeText}>{msg.video_duration_label ?? msg.duration ?? '0:15'}</Text>
+          </View>
+        </View>
+      ) : (
+        <LinearGradient
+          colors={msg.vidGradient ?? ['#1a1a2e', '#0f0f1e']}
+          style={styles.imgFrame}
+        >
+          <Text style={{ fontSize: 44 }}>{msg.vidEmoji ?? '🎬'}</Text>
+          <View style={styles.playCircle}>
+            <Text style={{ fontSize: 20, color: '#fff', paddingLeft: 3 }}>▶</Text>
+          </View>
+          <View style={styles.mediaBadge}>
+            <Text style={styles.mediaBadgeText}>{msg.video_duration_label ?? msg.duration ?? '0:15'}</Text>
+          </View>
+        </LinearGradient>
+      )}
+    </TouchableOpacity>
+  );
+};
 
 // ── LIGHTBOX MODAL ────────────────────────────────────────────────────────────
-export const Lightbox = ({ msg, onClose }) => (
-  <Modal transparent animationType="fade" onRequestClose={onClose}>
-    <TouchableOpacity
-      style={styles.lightboxBg}
-      activeOpacity={1}
-      onPress={onClose}
-    >
+export const Lightbox = ({ msg, onClose }) => {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (msg.image_asset_url) {
+      getMediaDownloadUrl({ path: msg.image_asset_url }).then((res) => {
+        if (!cancelled && res.ok) setUrl(res.data.signedUrl);
+      });
+    }
+    return () => { cancelled = true; };
+  }, [msg.image_asset_url]);
+
+  return (
+    <Modal transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity
+        style={styles.lightboxBg}
+        activeOpacity={1}
         onPress={onClose}
-        style={styles.closeBtn}
-        activeOpacity={0.8}
       >
-        <Text style={{ color: C.sub, fontSize: 16 }}>✕</Text>
+        <TouchableOpacity
+          onPress={onClose}
+          style={styles.closeBtn}
+          activeOpacity={0.8}
+        >
+          <Text style={{ color: C.sub, fontSize: 16 }}>✕</Text>
+        </TouchableOpacity>
+        {url ? (
+          <Image source={{ uri: url }} style={styles.lightboxFrame} contentFit="contain" />
+        ) : (
+          <LinearGradient
+            colors={msg.imgGradient ?? [C.s3, C.s2]}
+            style={styles.lightboxFrame}
+          >
+            <Text style={{ fontSize: 96 }}>{msg.imgEmoji ?? '🖼️'}</Text>
+          </LinearGradient>
+        )}
+        <Text style={styles.lightboxHint}>Tap anywhere to close</Text>
       </TouchableOpacity>
-      <LinearGradient
-        colors={msg.imgGradient ?? [C.s3, C.s2]}
-        style={styles.lightboxFrame}
-      >
-        <Text style={{ fontSize: 96 }}>{msg.imgEmoji ?? '🖼️'}</Text>
-      </LinearGradient>
-      <Text style={styles.lightboxHint}>Tap anywhere to close</Text>
-    </TouchableOpacity>
-  </Modal>
-);
+    </Modal>
+  );
+};
 
 // ── VIDEO PLAYER MODAL ────────────────────────────────────────────────────────
+// Resolves msg.video_asset_url (a storage path) to a signed URL, then plays
+// it for real via expo-video instead of the old setInterval fake scrubber.
 export const VideoPlayer = ({ msg, onClose }) => {
-  const [playing, setPlaying] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const maxSec = 15;
-  const iv = useRef(null);
-
-  const toggle = () => {
-    if (playing) {
-      clearInterval(iv.current);
-      setPlaying(false);
-    } else {
-      setPlaying(true);
-      iv.current = setInterval(() => {
-        setElapsed((e) => {
-          if (e >= maxSec) { clearInterval(iv.current); setPlaying(false); return 0; }
-          return e + 0.1;
-        });
-      }, 100);
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (msg.video_asset_url) {
+      getMediaDownloadUrl({ path: msg.video_asset_url }).then((res) => {
+        if (!cancelled && res.ok) setUrl(res.data.signedUrl);
+      });
     }
-  };
-  useEffect(() => () => clearInterval(iv.current), []);
-  const pct = (elapsed / maxSec) * 100;
+    return () => { cancelled = true; };
+  }, [msg.video_asset_url]);
+
+  const player = useVideoPlayer(url, (p) => { p.play(); });
 
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
@@ -179,40 +238,21 @@ export const VideoPlayer = ({ msg, onClose }) => {
           <Text style={{ color: C.sub, fontSize: 16 }}>✕</Text>
         </TouchableOpacity>
 
-        <LinearGradient
-          colors={msg.vidGradient ?? ['#1a1a2e', '#0f0f1e']}
-          style={styles.videoFrame}
-        >
-          <Text style={{ fontSize: 80 }}>{msg.vidEmoji ?? '🎬'}</Text>
-          {playing && (
-            <View style={styles.videoPlayingOverlay}>
-              <Text style={{ fontSize: 60, opacity: 0.3 }}>⏸</Text>
-            </View>
-          )}
-        </LinearGradient>
-
-        <View style={styles.scrubberWrap}>
-          <View style={styles.scrubberTrack}>
-            <View style={[styles.scrubberFill, { width: `${pct}%` }]} />
-          </View>
-          <View style={styles.scrubberLabels}>
-            <Text style={styles.scrubLabel}>
-              {String(Math.floor(elapsed)).padStart(2, '0')}s
-            </Text>
-            <Text style={styles.scrubLabel}>{maxSec}s</Text>
-          </View>
-        </View>
-
-        <TouchableOpacity onPress={toggle} style={styles.videoPlayBtn} activeOpacity={0.85}>
+        {url ? (
+          <VideoView
+            style={styles.videoFrame}
+            player={player}
+            nativeControls
+            contentFit="contain"
+          />
+        ) : (
           <LinearGradient
-            colors={[C.accent, C.accentL]}
-            style={styles.videoPlayBtnInner}
+            colors={msg.vidGradient ?? ['#1a1a2e', '#0f0f1e']}
+            style={styles.videoFrame}
           >
-            <Text style={{ fontSize: 22, color: '#fff', paddingLeft: playing ? 0 : 3 }}>
-              {playing ? '⏸' : '▶'}
-            </Text>
+            <Text style={{ fontSize: 80 }}>{msg.vidEmoji ?? '🎬'}</Text>
           </LinearGradient>
-        </TouchableOpacity>
+        )}
       </View>
     </Modal>
   );

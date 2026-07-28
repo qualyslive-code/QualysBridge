@@ -17,7 +17,8 @@ import { ReportModal, SendMoneyScreen } from './ModalsAndOverlays';
 import { supabase } from '../lib/supabase';
 import * as SecureStore from 'expo-secure-store';
 import { encryptMessage, decryptMessage, isEncryptedPayload } from '../lib/e2e';
-import { createPaypalOrder, capturePaypalOrder } from '../lib/api';
+import { createPaypalOrder, capturePaypalOrder, getMediaUploadUrl } from '../lib/api';
+import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { uid, ago } from '../utils';
 
@@ -180,7 +181,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       // not an error. mutual/pending come straight from the view's `status`.
       setTrust(trustRow?.status ?? 'new');
 
-      const priv = await SecureStore.getItemAsync(`e2e_sk_${myUser.id}`);
+      const priv = await SecureStore.getItemAsync(`e2e_privkey_${myUser.id}`);
       if (isMounted) setMyPrivateKey(priv);
       const { data: contactRow } = await supabase
         .from('app_user_public').select('public_key').eq('id', cid).maybeSingle();
@@ -317,23 +318,60 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     // rendered in the input bar area below (same as the text-send error).
   };
 
-  // NOTE: sendImage/sendVideo still pick from the local DEMO_IMAGES/DEMO_VIDEOS
-  // arrays for the gradient placeholder — that's a UI-only demo affordance,
-  // unrelated to backend wiring. The PRODUCTION SEAM is the asset URL: once
-  // real picker/upload exists, pass the uploaded storage URL as
-  // p_image_asset_url / p_video_asset_url instead of leaving them null.
+  // Real picker + upload: asks the bridge for a signed Storage URL, PUTs
+  // the file straight to Supabase Storage via uploadToSignedUrl, then
+  // passes the returned `path` through to send_message as
+  // p_image_asset_url / p_video_asset_url instead of null.
+  const uploadAndSend = async ({ type, asset }) => {
+    const fileExt = (asset.uri.split('.').pop() || '').toLowerCase();
+    const upRes = await getMediaUploadUrl({ conversationId, fileExt });
+    if (!upRes.ok) {
+      setSendError(upRes.message || 'Could not start upload');
+      return;
+    }
+    const { path, token } = upRes.data;
+
+    const fileBlob = await (await fetch(asset.uri)).blob();
+    // Bucket name matches MEDIA_BUCKET's default in QualysBridge-Backend/src/config.js.
+    const { error: uploadErr } = await supabase.storage
+      .from('qualys-family-media')
+      .uploadToSignedUrl(path, token, fileBlob);
+    if (uploadErr) {
+      setSendError(uploadErr.message || 'Upload failed');
+      return;
+    }
+
+    if (type === 'image') {
+      await sendMessage({ p_type: 'image', p_body: '📷 Image', p_image_asset_url: path });
+    } else {
+      const durSec = asset.duration ? Math.round(asset.duration / 1000) : 15;
+      await sendMessage({
+        p_type: 'video', p_body: '🎬 Video message',
+        p_video_asset_url: path,
+        p_video_duration_label: `0:${String(durSec).padStart(2, '0')}`,
+      });
+    }
+  };
+
   const sendImage = async () => {
     setShowAttach(false);
-    // FIX: was fire-and-forget.
-    await sendMessage({ p_type: 'image', p_body: '📷 Image', p_image_asset_url: null });
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { setSendError('Photo library permission denied'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8,
+    });
+    if (result.canceled) return;
+    await uploadAndSend({ type: 'image', asset: result.assets[0] });
   };
   const sendVideo = async () => {
     setShowAttach(false);
-    // FIX: was fire-and-forget.
-    await sendMessage({
-      p_type: 'video', p_body: '🎬 Video message',
-      p_video_asset_url: null, p_video_duration_label: '0:12',
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { setSendError('Photo library permission denied'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos, quality: 0.8,
     });
+    if (result.canceled) return;
+    await uploadAndSend({ type: 'video', asset: result.assets[0] });
   };
 
   // FIX: was synchronous and assumed success — closed the overlay

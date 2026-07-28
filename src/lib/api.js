@@ -43,3 +43,17 @@ export function capturePaypalOrder({ orderId }) {
 }
 
 export const API_BASE = API_URL;
+
+export function getMediaUploadUrl({ conversationId, fileExt }) {
+  return authedFetch('/media/upload-url', {
+    method: 'POST',
+    body: JSON.stringify({ conversationId, fileExt }),
+  });
+}
+
+export function getMediaDownloadUrl({ path }) {
+  return authedFetch('/media/download-url', {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  });
+}

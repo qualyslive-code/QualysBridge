@@ -38,7 +38,9 @@
         }
       ],
       "react-native-libsodium",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-image",
+      "expo-video"
     ],
     "extra": {
       "eas": {
