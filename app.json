@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "QualysBridge",
-    "slug": "qualys-bridge",
+    "slug": "qualys-family",
     "scheme": "qualysbridge",
     "version": "1.0.0",
     "sdkVersion": "56.0.0",
@@ -29,7 +29,14 @@
     },
     "plugins": [
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "react-native-webrtc",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera for video calls",
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for calls"
+        }
+      ]
     ],
     "extra": {
       "eas": {
