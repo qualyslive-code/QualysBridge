@@ -28,11 +28,15 @@
     "expo-web-browser": "~56.0.6",
     "react": "19.2.3",
     "react-native": "0.85.3",
+    "react-native-libsodium": "^1.7.0",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-url-polyfill": "^2.0.0",
     "react-native-webrtc": "^124.0.8"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0"
+  },
+  "allowScripts": {
+    "react-native-libsodium@1.7.0": true
   }
 }

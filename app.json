@@ -36,7 +36,8 @@
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera for video calls",
           "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for calls"
         }
-      ]
+      ],
+      "react-native-libsodium"
     ],
     "extra": {
       "eas": {
