@@ -528,13 +528,14 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       {/* Messages */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : insets.top + 64}
       >
         <FlatList
           ref={flatRef}
           data={[...msgs, ...(typing ? [{ id: '__typing', type: '__typing' }] : [])]}
           keyExtractor={(m) => m.id}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={ms.list}
           renderItem={({ item }) => {
             if (item.type === '__typing') {
