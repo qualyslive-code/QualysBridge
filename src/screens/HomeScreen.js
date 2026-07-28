@@ -14,7 +14,7 @@ import { AddContactModal } from './ModalsAndOverlays';
 import { supabase } from '../lib/supabase';
 import { ago } from '../utils';
 
-export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings }) {
+export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings, onOpenSelfNotes }) {
   const [contacts, setContacts] = useState([]);
   const [search,   setSearch]   = useState('');
   const [showAdd,  setShowAdd]  = useState(false);
@@ -202,6 +202,15 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings 
         </View>
       </View>
 
+      {/* Notes to Self */}
+      <TouchableOpacity onPress={onOpenSelfNotes} style={hs.selfNotesRow} activeOpacity={0.7}>
+        <Av name={user.displayName} color={user.color} size={40} />
+        <View style={{ flex: 1 }}>
+          <Text style={hs.selfNotesTitle}>Notes to Self</Text>
+          <Text style={hs.selfNotesSub}>Private — only visible to you</Text>
+        </View>
+      </TouchableOpacity>
+
       {/* Search */}
       <View style={hs.searchWrap}>
         <Text style={hs.searchIcon}>⌕</Text>
@@ -295,6 +304,13 @@ const hs = StyleSheet.create({
   qidBody:   { padding: 12, paddingHorizontal: 16 },
   qidValue:  { fontSize: 15, fontWeight: '600', color: C.text, letterSpacing: 2 },
 
+  selfNotesRow: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    marginHorizontal: 16, marginBottom: 14, padding: 12, paddingHorizontal: 14,
+    backgroundColor: C.s1, borderRadius: 16, borderWidth: 1, borderColor: C.borderM,
+  },
+  selfNotesTitle: { fontSize: 14, fontWeight: "600", color: C.text },
+  selfNotesSub: { fontSize: 11, color: C.dim, marginTop: 1 },
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     marginHorizontal: 14, marginBottom: 10,

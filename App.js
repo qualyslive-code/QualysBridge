@@ -24,6 +24,7 @@ import ChatScreen            from './src/screens/ChatScreen';
 import SettingsScreen        from './src/screens/SettingsScreen';
 import CallOverlay           from './src/screens/CallOverlay';
 import IncomingCallOverlay   from './src/screens/IncomingCallOverlay';
+import SelfNotesScreen       from './src/screens/SelfNotesScreen';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -53,6 +54,7 @@ export default function App() {
   const [user,    setUser]    = useState(null);
   const [chat,    setChat]    = useState(null);      // active contact
   const [settings, setSettings] = useState(false);
+  const [selfNotes, setSelfNotes] = useState(false);
   const [fontsLoaded] = useFonts({ Syne_700Bold, Syne_800ExtraBold });
   const [interLoaded] = useInterFonts({
     Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
@@ -151,6 +153,13 @@ export default function App() {
         onLogout={() => { setSettings(false); }} // actual session teardown now happens in SettingsScreen.signOut(); onAuthStateChange drives step back to 'login'
       />
     );
+  } else if (selfNotes && user) {
+    content = (
+      <SelfNotesScreen
+        user={user}
+        onBack={() => setSelfNotes(false)}
+      />
+    );
   } else if (chat && user) {
     content = (
       <ChatScreen
@@ -182,6 +191,7 @@ export default function App() {
             user={user}
             onOpenChat={(contact) => setChat(contact)}
             onOpenSettings={() => setSettings(true)}
+            onOpenSelfNotes={() => setSelfNotes(true)}
             onLogout={() => {}} // unused now — sign-out flows through Settings' real signOut(); kept as a no-op so HomeScreen's existing prop contract doesn't need to change
           />
         )}

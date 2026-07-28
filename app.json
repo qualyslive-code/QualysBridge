@@ -37,7 +37,8 @@
           "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for calls"
         }
       ],
-      "react-native-libsodium"
+      "react-native-libsodium",
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {
