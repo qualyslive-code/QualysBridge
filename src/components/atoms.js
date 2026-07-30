@@ -9,10 +9,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { C, F } from '../theme';
 
 // ── AVATAR ────────────────────────────────────────────────────────────────────
-export const Av = ({ name, color, size = 44, online = false, style }) => {
+export const Av = ({ name, color, size = 44, online = false, style, avatarUrl }) => {
   const initials = name
     .split(' ')
     .map((w) => w[0])
@@ -23,6 +24,13 @@ export const Av = ({ name, color, size = 44, online = false, style }) => {
 
   return (
     <View style={[{ position: 'relative', flexShrink: 0 }, style]}>
+      {avatarUrl ? (
+        <Image
+          source={{ uri: avatarUrl }}
+          style={[styles.avBase, { width: size, height: size, borderRadius: size / 2 }]}
+          contentFit="cover"
+        />
+      ) : (
       <LinearGradient
         colors={[color + 'EE', color + '55']}
         start={{ x: 0, y: 0 }}
@@ -34,6 +42,7 @@ export const Av = ({ name, color, size = 44, online = false, style }) => {
       >
         <Text style={[styles.avText, { fontSize }]}>{initials}</Text>
       </LinearGradient>
+      )}
       {online && (
         <View
           style={[

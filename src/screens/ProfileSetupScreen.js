@@ -12,12 +12,26 @@ import { PBtn } from '../components/atoms';
 import { supabase } from '../lib/supabase';
 import sodium from 'react-native-libsodium';
 import * as SecureStore from 'expo-secure-store';
+import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'expo-image';
+import { getMediaUploadUrl } from '../lib/api';
 
 export function ProfileSetupScreen({ gUser, onDone }) {
   const [name,  setName]  = useState(gUser?.name?.split(' ')[0] ?? '');
   const [color, setColor] = useState('#5E4FE8');
   const [err,   setErr]   = useState('');
+  const [photo, setPhoto] = useState(null); // local picked asset, uploaded on submit
   const insets = useSafeAreaInsets();
+
+  const pickPhoto = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'], quality: 0.8, allowsEditing: true, aspect: [1, 1],
+    });
+    if (result.canceled) return;
+    setPhoto(result.assets[0]);
+  };
 
   const [submitting, setSubmitting] = useState(false);
   const initials = name.trim().slice(0, 2).toUpperCase() || 'YO';
@@ -52,12 +66,39 @@ export function ProfileSetupScreen({ gUser, onDone }) {
       console.warn('[e2e] failed to save public_key:', keyError);
     }
 
+    let avatarUrl = null;
+    if (photo) {
+      try {
+        const fileExt = (photo.uri.split('.').pop() || 'jpg').toLowerCase();
+        const upRes = await getMediaUploadUrl({ conversationId: 'avatars', fileExt });
+        if (upRes.ok) {
+          const { path, token } = upRes.data;
+          const fileBuffer = await (await fetch(photo.uri)).arrayBuffer();
+          const CONTENT_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+          const contentType = CONTENT_TYPES[fileExt] || 'image/jpeg';
+          const { error: uploadErr } = await supabase.storage
+            .from('qualys-family-media')
+            .uploadToSignedUrl(path, token, fileBuffer, { contentType });
+          if (!uploadErr) {
+            const { data: signed } = await supabase.storage
+              .from('qualys-family-media')
+              .createSignedUrl(path, 60 * 60 * 24 * 365);
+            await supabase.from('app_user').update({ avatar_url: path }).eq('id', row.id);
+            avatarUrl = signed?.signedUrl ?? null;
+          }
+        }
+      } catch (photoErr) {
+        console.warn('[ProfileSetupScreen] avatar upload failed:', photoErr);
+      }
+    }
+
     onDone({
       id: row.id,
       email: row.email,
       displayName: row.display_name,
       color: row.color,
       qid: row.qid,
+      avatarUrl,
     });
   };
 
@@ -74,15 +115,22 @@ export function ProfileSetupScreen({ gUser, onDone }) {
       </Text>
 
       {/* Avatar preview */}
-      <View style={styles.avatarWrap}>
-        <LinearGradient
-          colors={[color + 'EE', color + '55']}
-          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-          style={styles.avatar}
-        >
-          <Text style={styles.avatarText}>{initials}</Text>
-        </LinearGradient>
-      </View>
+      <TouchableOpacity onPress={pickPhoto} activeOpacity={0.85} style={styles.avatarWrap}>
+        {photo ? (
+          <Image source={{ uri: photo.uri }} style={styles.avatar} contentFit="cover" />
+        ) : (
+          <LinearGradient
+            colors={[color + 'EE', color + '55']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={styles.avatar}
+          >
+            <Text style={styles.avatarText}>{initials}</Text>
+          </LinearGradient>
+        )}
+        <View style={styles.avatarEditBadge}>
+          <Text style={{ fontSize: 12 }}>📷</Text>
+        </View>
+      </TouchableOpacity>
 
       {/* Colour picker */}
       <Text style={styles.label}>COLOUR</Text>
@@ -313,9 +361,15 @@ const styles = StyleSheet.create({
   label:    { fontSize: 10, fontWeight: '600', color: C.dim, letterSpacing: 1.5, marginBottom: 12 },
   errText:  { fontSize: 11, color: C.danger, marginTop: 6 },
 
-  avatarWrap: { alignItems: 'center', marginBottom: 32 },
+  avatarWrap: { alignItems: 'center', marginBottom: 32, alignSelf: 'center' },
   avatar:     { width: 90, height: 90, borderRadius: 45, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 36, fontWeight: '700', color: '#fff' },
+  avatarEditBadge: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: C.s2, borderWidth: 2, borderColor: C.bg,
+    alignItems: 'center', justifyContent: 'center',
+  },
 
   palette: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   swatch:  { width: 34, height: 34, borderRadius: 17, opacity: 0.85 },

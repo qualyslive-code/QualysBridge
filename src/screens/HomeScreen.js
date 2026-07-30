@@ -30,6 +30,7 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
     qid: row.other_qid,           // for display only (QID card, search-by-QID) — never used as an id in queries
     name: row.other_display_name,
     color: row.other_color,
+    avatarUrl: row.other_avatar_url,
     unread: row.unread_count,
     lastMsg: row.last_message_body ?? '',
     lastTs: row.last_message_at ? new Date(row.last_message_at).getTime() : Date.now(),
@@ -119,7 +120,7 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
     return (
       <View>
         <TouchableOpacity onPress={() => open(c)} style={hs.row} activeOpacity={0.7}>
-          <Av name={c.name} color={c.color} size={52} online={on?.on} />
+          <Av name={c.name} color={c.color} avatarUrl={c.avatarUrl} size={52} online={on?.on} />
           <View style={{ flex: 1, overflow: 'hidden' }}>
             <View style={hs.rowTop}>
               <View style={hs.nameRow}>
@@ -187,7 +188,7 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
           style={hs.qidCardHeader}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Av name={user.displayName} color="rgba(255,255,255,0.3)" size={34} />
+            <Av name={user.displayName} color="rgba(255,255,255,0.3)" avatarUrl={user.avatarUrl} size={34} />
             <View>
               <Text style={hs.qidSub}>QUALYS ID</Text>
               <Text style={hs.qidName}>{user.displayName}</Text>
@@ -204,7 +205,7 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
 
       {/* Notes to Self */}
       <TouchableOpacity onPress={onOpenSelfNotes} style={hs.selfNotesRow} activeOpacity={0.7}>
-        <Av name={user.displayName} color={user.color} size={40} />
+        <Av name={user.displayName} color={user.color} avatarUrl={user.avatarUrl} size={40} />
         <View style={{ flex: 1 }}>
           <Text style={hs.selfNotesTitle}>Notes to Self</Text>
           <Text style={hs.selfNotesSub}>Private — only visible to you</Text>

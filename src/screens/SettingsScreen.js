@@ -22,7 +22,45 @@ const SECURITY = [
   { k: 'Legal access', v: 'Court order only' },
 ];
 
-export default function SettingsScreen({ user, onBack, onLogout }) {
+export default function SettingsScreen({ user, onBack, onLogout, onAvatarUpdated }) {
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const changeAvatar = async () => {
+    const ImagePicker = require('expo-image-picker');
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'], quality: 0.8, allowsEditing: true, aspect: [1, 1],
+    });
+    if (result.canceled) return;
+    setAvatarUploading(true);
+    try {
+      const asset = result.assets[0];
+      const fileExt = (asset.uri.split('.').pop() || 'jpg').toLowerCase();
+      const { getMediaUploadUrl } = require('../lib/api');
+      const upRes = await getMediaUploadUrl({ conversationId: 'avatars', fileExt });
+      if (!upRes.ok) return;
+      const { path, token } = upRes.data;
+      const fileBuffer = await (await fetch(asset.uri)).arrayBuffer();
+      const CONTENT_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+      const contentType = CONTENT_TYPES[fileExt] || 'image/jpeg';
+      const { error: uploadErr } = await supabase.storage
+        .from('qualys-family-media')
+        .uploadToSignedUrl(path, token, fileBuffer, { contentType });
+      if (uploadErr) return;
+      const { data: signed } = await supabase.storage
+        .from('qualys-family-media')
+        .createSignedUrl(path, 60 * 60 * 24 * 365);
+      const { error: dbErr } = await supabase
+        .from('app_user')
+        .update({ avatar_url: path })
+        .eq('id', user.id);
+      if (!dbErr) onAvatarUpdated?.(signed?.signedUrl ?? path);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   // Initialized from the real column — App.js's create_profile/login flow
   // needs to populate user.readReceiptsEnabled for this to reflect the
   // actual stored value rather than always starting true on every mount.
@@ -66,7 +104,9 @@ export default function SettingsScreen({ user, onBack, onLogout }) {
       >
         {/* Profile card */}
         <View style={s.profileCard}>
-          <Av name={user.displayName} color={user.color} size={58} />
+          <TouchableOpacity onPress={changeAvatar} disabled={avatarUploading} activeOpacity={0.8}>
+            <Av name={user.displayName} color={user.color} avatarUrl={user.avatarUrl} size={58} />
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.profileName}>{user.displayName}</Text>
             <Text style={s.profileQid}>{user.qid}</Text>

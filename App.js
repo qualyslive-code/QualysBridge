@@ -41,6 +41,7 @@ function toUserShape(row) {
     color: row.color,
     qid: row.qid,
     readReceiptsEnabled: row.read_receipts_enabled,
+    avatarUrl: row.avatar_url,
   };
 }
 
@@ -152,6 +153,7 @@ export default function App() {
   if (settings && user) {
     content = (
       <SettingsScreen
+        onAvatarUpdated={(avatarUrl) => setUser((prev) => ({ ...prev, avatarUrl }))}
         user={user}
         onBack={() => setSettings(false)}
         onLogout={() => { setSettings(false); }} // actual session teardown now happens in SettingsScreen.signOut(); onAuthStateChange drives step back to 'login'

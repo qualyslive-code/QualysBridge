@@ -531,7 +531,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       {/* Header */}
       <View style={cs.header}>
         <IBtn icon="‹" onPress={onBack} />
-        <Av name={contact.name} color={contact.color} size={40} online={online.on} />
+        <Av name={contact.name} color={contact.color} avatarUrl={contact.avatarUrl} size={40} online={online.on} />
         <View style={{ flex: 1, overflow: 'hidden' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
             <Text style={cs.headerName} numberOfLines={1}>{contact.name}</Text>
@@ -577,7 +577,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
             if (item.type === '__typing') {
               return (
                 <View style={ms.typingRow}>
-                  <Av name={contact.name} color={contact.color} size={26} />
+                  <Av name={contact.name} color={contact.color} avatarUrl={contact.avatarUrl} size={26} />
                   <Typing color={contact.color} />
                 </View>
               );
@@ -586,7 +586,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
           }}
           ListEmptyComponent={
             <View style={ms.empty}>
-              <Av name={contact.name} color={contact.color} size={64} style={{ opacity: 0.7, marginBottom: 18 }} />
+              <Av name={contact.name} color={contact.color} avatarUrl={contact.avatarUrl} size={64} style={{ opacity: 0.7, marginBottom: 18 }} />
               <Text style={ms.emptyName}>{contact.name}</Text>
               <Text style={ms.emptyHint}>
                 Your first message. Only you and {contact.name.split(' ')[0]} can read it.
