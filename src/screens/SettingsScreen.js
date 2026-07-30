@@ -17,7 +17,7 @@ import { supabase } from '../lib/supabase';
 // fix (app_user_select_public removed) that makes the old claim true.
 const SECURITY = [
   { k: 'In transit',   v: 'TLS' },
-  { k: 'At rest',      v: 'Not yet encrypted' },
+  { k: 'At rest',      v: 'End-to-end encrypted' },
   { k: 'Identity',     v: 'Email hidden from all other users' },
   { k: 'Legal access', v: 'Court order only' },
 ];
