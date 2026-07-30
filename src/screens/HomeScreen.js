@@ -13,12 +13,16 @@ import { Av, Tag, IBtn, Hr } from '../components/atoms';
 import { AddContactModal } from './ModalsAndOverlays';
 import { supabase } from '../lib/supabase';
 import { ago } from '../utils';
+import { useGroupCallContext } from '../lib/GroupCallContext';
 
 export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings, onOpenSelfNotes }) {
   const [contacts, setContacts] = useState([]);
   const [search,   setSearch]   = useState('');
   const [showAdd,  setShowAdd]  = useState(false);
   const [onlines,  setOnlines]  = useState({});
+  const [showGroupPicker, setShowGroupPicker] = useState(false);
+  const [groupSelected,   setGroupSelected]   = useState([]);
+  const { startGroupCall, MAX_PARTICIPANTS } = useGroupCallContext();
   const insets = useSafeAreaInsets();
 
   // Normalizes get_conversations()'s row shape into exactly what renderItem
@@ -171,6 +175,7 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
           )}
         </View>
         <View style={hs.appBarRight}>
+          <IBtn icon="🎥" onPress={() => { setGroupSelected([]); setShowGroupPicker(true); }} />
           <IBtn icon="⚙️" onPress={onOpenSettings} />
           <TouchableOpacity onPress={() => setShowAdd(true)} style={hs.addBtn} activeOpacity={0.85}>
             <LinearGradient colors={[C.accent, C.accentL]} style={hs.addBtnInner}>
@@ -264,12 +269,73 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
           onAdd={(c) => setContacts((p) => [c, ...p])}
         />
       )}
+
+      {showGroupPicker && (
+        <View style={hs.groupPickerOverlay}>
+          <View style={hs.groupPickerCard}>
+            <Text style={hs.groupPickerTitle}>Start group call</Text>
+            <Text style={hs.groupPickerSub}>Pick up to {MAX_PARTICIPANTS - 1} people</Text>
+            <FlatList
+              data={contacts}
+              keyExtractor={(c) => c.id}
+              style={{ maxHeight: 320 }}
+              renderItem={({ item }) => {
+                const selected = groupSelected.includes(item.id);
+                const disabled = !selected && groupSelected.length >= MAX_PARTICIPANTS - 1;
+                return (
+                  <TouchableOpacity
+                    disabled={disabled}
+                    onPress={() => setGroupSelected((prev) =>
+                      selected ? prev.filter((id) => id !== item.id) : [...prev, item.id]
+                    )}
+                    style={[hs.groupPickerRow, disabled && { opacity: 0.35 }]}
+                    activeOpacity={0.7}
+                  >
+                    <Av name={item.name} color={item.color} avatarUrl={item.avatarUrl} size={36} />
+                    <Text style={hs.groupPickerName}>{item.name}</Text>
+                    {selected && <Text style={hs.groupPickerCheck}>✓</Text>}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+            <View style={hs.groupPickerActions}>
+              <TouchableOpacity onPress={() => setShowGroupPicker(false)} style={hs.groupPickerCancel} activeOpacity={0.8}>
+                <Text style={hs.groupPickerCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={groupSelected.length === 0}
+                onPress={async () => {
+                  setShowGroupPicker(false);
+                  await startGroupCall(groupSelected, 'video');
+                }}
+                style={[hs.groupPickerStart, groupSelected.length === 0 && { opacity: 0.4 }]}
+                activeOpacity={0.85}
+              >
+                <Text style={hs.groupPickerStartText}>Start ({groupSelected.length})</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
 const hs = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
+
+  groupPickerOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+  groupPickerCard: { width: '88%', maxHeight: '70%', backgroundColor: C.s1, borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 16 },
+  groupPickerTitle: { color: C.text, fontSize: 17, fontWeight: '700' },
+  groupPickerSub: { color: C.sub, fontSize: 12, marginTop: 4, marginBottom: 12 },
+  groupPickerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
+  groupPickerName: { color: C.text, fontSize: 15, flex: 1 },
+  groupPickerCheck: { color: C.money, fontSize: 18, fontWeight: '700' },
+  groupPickerActions: { flexDirection: 'row', gap: 12, marginTop: 14 },
+  groupPickerCancel: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 10, backgroundColor: C.s2 },
+  groupPickerCancelText: { color: C.sub, fontWeight: '600' },
+  groupPickerStart: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 10, backgroundColor: C.money },
+  groupPickerStartText: { color: '#fff', fontWeight: '700' },
 
   appBar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',

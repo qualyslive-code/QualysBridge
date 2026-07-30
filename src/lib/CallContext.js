@@ -27,7 +27,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { mediaDevices, RTCPeerConnection, RTCSessionDescription, RTCIceCandidate } from 'react-native-webrtc';
 import { supabase } from './supabase';
-import { API_BASE } from './api';
+import * as signalSocket from './signalSocket';
 
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 const CallContext = createContext(null);
@@ -39,7 +39,6 @@ export function CallProvider({ myUser, children }) {
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
 
-  const wsRef = useRef(null);
   const pcRef = useRef(null);
   const activeCallRef = useRef(null);
   const incomingCallRef = useRef(null);
@@ -47,9 +46,7 @@ export function CallProvider({ myUser, children }) {
   activeCallRef.current = activeCall;
   incomingCallRef.current = incomingCall;
 
-  const send = useCallback((msg) => {
-    if (wsRef.current?.readyState === 1) wsRef.current.send(JSON.stringify(msg));
-  }, []);
+  const send = signalSocket.send;
 
   const lookupUser = useCallback(async (userId) => {
     if (knownUsers.current.has(userId)) return knownUsers.current.get(userId);
@@ -119,9 +116,10 @@ export function CallProvider({ myUser, children }) {
     endCall();
   }, [send, endCall]);
 
-  const handleMessage = useCallback(async (e) => {
-    let msg;
-    try { msg = JSON.parse(e.data); } catch { return; }
+  const handleMessage = useCallback(async (msg) => {
+    // signalSocket now dispatches group-call room messages to every
+    // subscriber too — ignore them here, GroupCallContext owns those.
+    if (msg.roomId) return;
 
     switch (msg.type) {
       case 'incoming-call': {
@@ -184,33 +182,17 @@ export function CallProvider({ myUser, children }) {
     }
   }, [lookupUser, ensurePeerConnection, send, endCall]);
 
-  // Persistent connection, opened once we have a real user; flat 3s retry
-  // if it drops.
+  // signalSocket owns the actual connection lifecycle now (shared with
+  // GroupCallContext) — this just starts it once we have a real user
+  // and subscribes to messages.
   useEffect(() => {
     if (!myUser?.id) return;
-    let cancelled = false;
-    let retryTimer = null;
-
-    const connect = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token || cancelled) return;
-      const base = API_BASE.replace('https://', 'wss://').replace('http://', 'ws://');
-      const ws = new WebSocket(`${base}/calls/signal?token=${session.access_token}`);
-      wsRef.current = ws;
-      ws.onmessage = handleMessage;
-      ws.onclose = () => {
-        wsRef.current = null;
-        if (!cancelled) retryTimer = setTimeout(connect, 3000);
-      };
-      ws.onerror = () => ws.close();
-    };
-    connect();
+    signalSocket.connect();
+    const unsubscribe = signalSocket.subscribe(handleMessage);
 
     return () => {
-      cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-      wsRef.current?.close();
-      wsRef.current = null;
+      unsubscribe();
+      signalSocket.disconnect();
     };
   }, [myUser?.id, handleMessage]);
 

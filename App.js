@@ -17,6 +17,7 @@ import { supabase } from './src/lib/supabase';
 import { createSessionFromUrl } from './src/lib/authSession';
 import { ensureKeyPair } from './src/lib/e2e';
 import { CallProvider } from './src/lib/CallContext';
+import { GroupCallProvider } from './src/lib/GroupCallContext';
 
 import LoginScreen           from './src/screens/LoginScreen';
 import { ProfileSetupScreen, QIDRevealScreen } from './src/screens/ProfileSetupScreen';
@@ -24,6 +25,8 @@ import HomeScreen            from './src/screens/HomeScreen';
 import ChatScreen            from './src/screens/ChatScreen';
 import SettingsScreen        from './src/screens/SettingsScreen';
 import CallOverlay           from './src/screens/CallOverlay';
+import GroupCallOverlay      from './src/screens/GroupCallOverlay';
+import GroupCallInviteOverlay from './src/screens/GroupCallInviteOverlay';
 import IncomingCallOverlay   from './src/screens/IncomingCallOverlay';
 import SelfNotesScreen       from './src/screens/SelfNotesScreen';
 
@@ -208,11 +211,15 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <CallProvider myUser={user}>
-        <View style={s.root} onLayout={onLayoutRoot}>
-          {content}
-        </View>
-        <IncomingCallOverlay />
-        <CallOverlay />
+        <GroupCallProvider myUser={user}>
+          <View style={s.root} onLayout={onLayoutRoot}>
+            {content}
+          </View>
+          <IncomingCallOverlay />
+          <CallOverlay />
+          <GroupCallInviteOverlay />
+          <GroupCallOverlay />
+        </GroupCallProvider>
       </CallProvider>
     </SafeAreaProvider>
   );
