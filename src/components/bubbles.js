@@ -89,7 +89,7 @@ export const VoiceNote = ({ msg, fromMe, contactColor }) => {
 // to a short-lived signed URL via the bridge before rendering. Falls back
 // to the old gradient placeholder while resolving or if there's no path
 // (e.g. legacy demo rows).
-export const ImageBubble = ({ msg, fromMe, onExpand }) => {
+export const ImageBubble = ({ msg, fromMe, onExpand, caption }) => {
   const [url, setUrl] = useState(null);
   useEffect(() => {
     let cancelled = false;
@@ -117,6 +117,7 @@ export const ImageBubble = ({ msg, fromMe, onExpand }) => {
       <View style={styles.mediaBadge}>
         <Text style={styles.mediaBadgeText}>⤢ Tap</Text>
       </View>
+      {caption ? <Text style={styles.captionText}>{caption}</Text> : null}
     </TouchableOpacity>
   );
 };
@@ -125,7 +126,7 @@ export const ImageBubble = ({ msg, fromMe, onExpand }) => {
 // Thumbnail generation is a separate future step — this still shows the
 // gradient tile as a poster, but the tap now opens a real playable video
 // (see VideoPlayer below) instead of a fake scrubber.
-export const VideoBubble = ({ msg, fromMe, onPlay }) => {
+export const VideoBubble = ({ msg, fromMe, onPlay, caption }) => {
   const [thumbUrl, setThumbUrl] = useState(null);
   useEffect(() => {
     let cancelled = false;
@@ -167,6 +168,7 @@ export const VideoBubble = ({ msg, fromMe, onPlay }) => {
           </View>
         </LinearGradient>
       )}
+      {caption ? <Text style={styles.captionText}>{caption}</Text> : null}
     </TouchableOpacity>
   );
 };
@@ -229,7 +231,21 @@ export const VideoPlayer = ({ msg, onClose }) => {
     return () => { cancelled = true; };
   }, [msg.video_asset_url]);
 
-  const player = useVideoPlayer(url, (p) => { p.play(); });
+  // Every video GET has been silently rejected before it ever reaches
+  // Supabase's own logs (confirmed via storage logs — zero GET entries for
+  // any .mp4, ever, while images fetch fine). ExoPlayer's default request
+  // headers (User-Agent in particular) look different from a normal
+  // browser/app fetch and are the likely trigger for a CDN-level block in
+  // front of Supabase Storage. Passing a source object with explicit
+  // headers overrides that default.
+  const source = url
+    ? { uri: url, headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36' } }
+    : null;
+  const player = useVideoPlayer(source, (p) => { p.play(); });
+
+  useEffect(() => {
+    if (url && player) player.play();
+  }, [url, player]);
 
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose}>
@@ -293,6 +309,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 3,
   },
   mediaBadgeText: { fontSize: 10, color: '#fff' },
+  captionText: { fontSize: 13, color: C.text, padding: 8, paddingTop: 6 },
 
   lightboxBg: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.97)',

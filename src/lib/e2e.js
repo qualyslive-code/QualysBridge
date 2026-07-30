@@ -1,5 +1,6 @@
 // src/lib/e2e.js — end-to-end encryption helpers (libsodium crypto_box)
 import sodium from 'react-native-libsodium';
+import { supabase } from './supabase';
 
 // Encrypts plaintext for recipientPublicKey using senderPrivateKey.
 // Returns a JSON string payload safe to store in message.body.
@@ -8,7 +9,7 @@ export async function encryptMessage(plaintext, recipientPublicKeyB64, senderPri
   const recipientPk = sodium.from_base64(recipientPublicKeyB64);
   const senderSk = sodium.from_base64(senderPrivateKeyB64);
   const nonce = sodium.randombytes_buf(sodium.crypto_box_NONCEBYTES);
-  const cipher = sodium.crypto_box_easy(sodium.from_string(plaintext), nonce, recipientPk, senderSk);
+  const cipher = sodium.crypto_box_easy(plaintext, nonce, recipientPk, senderSk);
   return JSON.stringify({ n: sodium.to_base64(nonce), c: sodium.to_base64(cipher) });
 }
 
@@ -39,4 +40,24 @@ export function isEncryptedPayload(body) {
   } catch {
     return false;
   }
+}
+
+import * as SecureStore from 'expo-secure-store';
+
+export async function ensureKeyPair(userId) {
+  await sodium.ready;
+  const existing = await SecureStore.getItemAsync(`e2e_privkey_${userId}`);
+  if (existing) return;
+
+  const { publicKey, privateKey } = sodium.crypto_box_keypair();
+  const pubB64 = sodium.to_base64(publicKey);
+  const privB64 = sodium.to_base64(privateKey);
+
+  await SecureStore.setItemAsync(`e2e_privkey_${userId}`, privB64);
+
+  const { error } = await supabase
+    .from('app_user')
+    .update({ public_key: pubB64 })
+    .eq('id', userId);
+  if (error) throw error;
 }

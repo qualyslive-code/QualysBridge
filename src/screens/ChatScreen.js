@@ -6,6 +6,7 @@ import {
   TouchableOpacity, KeyboardAvoidingView, Platform, Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, DESTRUCT } from '../theme';
 import { Av, Tag, IBtn, E2EBar, Typing, WallNotice, TCard } from '../components/atoms';
@@ -114,6 +115,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   const { startOutgoingCall } = useCallContext();
   const [msgs,       setMsgs]       = useState([]);
   const [input,      setInput]      = useState('');
+  const [pendingAttachment, setPendingAttachment] = useState(null); // { type: 'image'|'video', asset }
   const [typing,     setTyping]     = useState(false); // no longer driven by simReply — left wired for a future real typing-indicator channel
   const [destruct,   setDestruct]   = useState('Off');
   const [blocked,    setBlocked]    = useState(false);
@@ -228,7 +230,8 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   useEffect(() => {
     if (!myPrivateKey || !contactPublicKey) return;
     const pending = msgs.filter(
-      (m) => m.type === 'text' && isEncryptedPayload(m.body) && decrypted[m.id] === undefined
+      (m) => (m.type === 'text' || m.type === 'image' || m.type === 'video')
+        && isEncryptedPayload(m.body) && decrypted[m.id] === undefined
     );
     if (!pending.length) return;
     let cancelled = false;
@@ -281,6 +284,14 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   }, [conversationId]);
 
   const sendText = async () => {
+    if (pendingAttachment) {
+      const { type, asset } = pendingAttachment;
+      const caption = input.trim();
+      setPendingAttachment(null);
+      setInput('');
+      await uploadAndSend({ type, asset, caption });
+      return;
+    }
     const t = input.trim();
     if (!t || blocked || walled) return;
     if (!myPrivateKey || !contactPublicKey) { setSendError('no_keys'); return; }
@@ -322,7 +333,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   // the file straight to Supabase Storage via uploadToSignedUrl, then
   // passes the returned `path` through to send_message as
   // p_image_asset_url / p_video_asset_url instead of null.
-  const uploadAndSend = async ({ type, asset }) => {
+  const uploadAndSend = async ({ type, asset, caption }) => {
     const fileExt = (asset.uri.split('.').pop() || '').toLowerCase();
     const upRes = await getMediaUploadUrl({ conversationId, fileExt });
     if (!upRes.ok) {
@@ -331,22 +342,47 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     }
     const { path, token } = upRes.data;
 
-    const fileBlob = await (await fetch(asset.uri)).blob();
+    // storage-js's uploadToSignedUrl silently drops fileOptions.contentType
+    // whenever the body is a Blob (it takes a separate FormData code path
+    // that never reads that option) — every upload was landing in storage
+    // as text/plain regardless of the real file. Uploading as an
+    // ArrayBuffer instead forces the SDK into the branch that actually
+    // sets the content-type header from our option.
+    const fileBuffer = await (await fetch(asset.uri)).arrayBuffer();
+    const CONTENT_TYPES = {
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+      webp: 'image/webp', heic: 'image/heic',
+      mp4: 'video/mp4', mov: 'video/quicktime', m4a: 'audio/m4a',
+    };
+    const contentType = CONTENT_TYPES[fileExt] || 'application/octet-stream';
     // Bucket name matches MEDIA_BUCKET's default in QualysBridge-Backend/src/config.js.
     const { error: uploadErr } = await supabase.storage
       .from('qualys-family-media')
-      .uploadToSignedUrl(path, token, fileBlob);
+      .uploadToSignedUrl(path, token, fileBuffer, { contentType });
     if (uploadErr) {
       setSendError(uploadErr.message || 'Upload failed');
       return;
     }
 
+    const trimmedCaption = caption?.trim();
+    let bodyToSend = type === 'image' ? '📷 Image' : '🎬 Video message';
+    if (trimmedCaption) {
+      if (!myPrivateKey || !contactPublicKey) { setSendError('no_keys'); return; }
+      try {
+        bodyToSend = await encryptMessage(trimmedCaption, contactPublicKey, myPrivateKey);
+      } catch (err) {
+        console.error('[ChatScreen] encrypt caption', err);
+        setSendError('no_keys');
+        return;
+      }
+    }
+
     if (type === 'image') {
-      await sendMessage({ p_type: 'image', p_body: '📷 Image', p_image_asset_url: path });
+      await sendMessage({ p_type: 'image', p_body: bodyToSend, p_image_asset_url: path });
     } else {
       const durSec = asset.duration ? Math.round(asset.duration / 1000) : 15;
       await sendMessage({
-        p_type: 'video', p_body: '🎬 Video message',
+        p_type: 'video', p_body: bodyToSend,
         p_video_asset_url: path,
         p_video_duration_label: `0:${String(durSec).padStart(2, '0')}`,
       });
@@ -358,20 +394,20 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { setSendError('Photo library permission denied'); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8,
+      mediaTypes: ['images'], quality: 0.8,
     });
     if (result.canceled) return;
-    await uploadAndSend({ type: 'image', asset: result.assets[0] });
+    setPendingAttachment({ type: 'image', asset: result.assets[0] });
   };
   const sendVideo = async () => {
     setShowAttach(false);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { setSendError('Photo library permission denied'); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos, quality: 0.8,
+      mediaTypes: ['videos'], quality: 0.8,
     });
     if (result.canceled) return;
-    await uploadAndSend({ type: 'video', asset: result.assets[0] });
+    setPendingAttachment({ type: 'video', asset: result.assets[0] });
   };
 
   // FIX: was synchronous and assumed success — closed the overlay
@@ -444,8 +480,8 @@ export default function ChatScreen({ contact, myUser, onBack }) {
           />
         )}
         {m.type === 'voice' && <VoiceNote msg={{ ...m, duration: m.voice_duration_seconds, waveform: m.voice_waveform }} fromMe={fromMe} contactColor={contact.color} />}
-        {m.type === 'image' && <ImageBubble msg={m} fromMe={fromMe} onExpand={setLightbox} />}
-        {m.type === 'video' && <VideoBubble msg={m} fromMe={fromMe} onPlay={setVideoPlay} />}
+        {m.type === 'image' && <ImageBubble msg={m} fromMe={fromMe} onExpand={setLightbox} caption={isEncryptedPayload(m.body) ? decrypted[m.id] : null} />}
+        {m.type === 'video' && <VideoBubble msg={m} fromMe={fromMe} onPlay={setVideoPlay} caption={isEncryptedPayload(m.body) ? decrypted[m.id] : null} />}
         {/* FIX: was `!m.transfer && !m.type` — the real `message` row always
             has `type` set (defaults to 'text', never null), so that
             condition was always false and this bubble never rendered for
@@ -578,6 +614,17 @@ export default function ChatScreen({ contact, myUser, onBack }) {
 
         {showAttach && <AttachTray onImage={sendImage} onVideo={sendVideo} onClose={() => setShowAttach(false)} />}
         {recording  && <VoiceRecorder onSend={sendVoice} onCancel={() => setRecording(false)} />}
+        {pendingAttachment && (
+          <View style={ib.pendingWrap}>
+            <Image source={{ uri: pendingAttachment.asset.uri }} style={ib.pendingThumb} contentFit="cover" />
+            <Text style={ib.pendingLabel}>
+              {pendingAttachment.type === 'image' ? '📷 Photo attached — add a caption or send' : '🎬 Video attached — add a caption or send'}
+            </Text>
+            <TouchableOpacity onPress={() => setPendingAttachment(null)} style={ib.pendingRemove}>
+              <Text style={{ color: C.sub, fontSize: 14 }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Input bar */}
         {!recording && (
@@ -741,6 +788,17 @@ const ib = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   attachBtnActive: { backgroundColor: C.accentD, borderColor: C.borderM },
+  pendingWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: C.s1, borderTopWidth: 1, borderTopColor: C.border,
+  },
+  pendingThumb: { width: 40, height: 40, borderRadius: 8, backgroundColor: C.s2 },
+  pendingLabel: { flex: 1, fontSize: 12, color: C.sub },
+  pendingRemove: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: C.s2, alignItems: 'center', justifyContent: 'center',
+  },
   input: {
     flex: 1, backgroundColor: C.s2, borderWidth: 1, borderColor: C.border,
     borderRadius: 24, padding: 11, paddingHorizontal: 16,

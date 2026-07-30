@@ -15,6 +15,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { C } from './src/theme';
 import { supabase } from './src/lib/supabase';
 import { createSessionFromUrl } from './src/lib/authSession';
+import { ensureKeyPair } from './src/lib/e2e';
 import { CallProvider } from './src/lib/CallContext';
 
 import LoginScreen           from './src/screens/LoginScreen';
@@ -95,6 +96,9 @@ export default function App() {
 
       if (row) {
         // Returning user — profile already exists, skip straight to home.
+        ensureKeyPair(session.user.id).catch((e) =>
+          console.error('[App] ensureKeyPair', e)
+        );
         setUser(toUserShape(row));
         setStep('home');
       } else {
