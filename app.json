@@ -41,7 +41,16 @@
       "react-native-libsodium",
       "expo-secure-store",
       "expo-image",
-      "expo-video"
+      "expo-video",
+      ["expo-build-properties", {"android": {"largeHeap": true}}],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to save photos you receive to your gallery.",
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos and videos you receive to your gallery.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ]
     ],
     "extra": {
       "eas": {

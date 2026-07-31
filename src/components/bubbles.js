@@ -3,13 +3,36 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Animated, Modal,
-  ScrollView, Dimensions,
+  ScrollView, Dimensions, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { File, Paths } from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
 import { C } from '../theme';
 import { getMediaDownloadUrl } from '../lib/api';
+
+// Re-downloads the already-signed remote URL into a temp cache file, then
+// saves that local file into the device's camera roll/gallery. Media
+// (like exoplayer/expo-video's own cache) isn't exposed to JS, so a
+// fresh download is the simplest reliable way to get a real local file
+// MediaLibrary can hand to the OS — the file was very likely already
+// CDN/edge-cached from the first in-app load, so this is usually cheap.
+async function saveMediaToDevice(url, filename) {
+  const { status } = await MediaLibrary.requestPermissionsAsync();
+  if (status !== 'granted') {
+    Alert.alert('Permission needed', 'Allow gallery access to save this file.');
+    return;
+  }
+  try {
+    const file = await File.downloadFileAsync(url, Paths.cache);
+    await MediaLibrary.saveToLibraryAsync(file.uri);
+    Alert.alert('Saved', 'Saved to your gallery.');
+  } catch (err) {
+    Alert.alert('Save failed', err.message || 'Could not save this file.');
+  }
+}
 
 const { width: SW } = Dimensions.get('window');
 
@@ -200,6 +223,15 @@ export const Lightbox = ({ msg, onClose }) => {
         >
           <Text style={{ color: C.sub, fontSize: 16 }}>✕</Text>
         </TouchableOpacity>
+        {url && (
+          <TouchableOpacity
+            onPress={() => saveMediaToDevice(url, 'image.jpg')}
+            style={styles.saveBtn}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: C.sub, fontSize: 16 }}>⬇</Text>
+          </TouchableOpacity>
+        )}
         {url ? (
           <Image source={{ uri: url }} style={styles.lightboxFrame} contentFit="contain" />
         ) : (
@@ -253,6 +285,15 @@ export const VideoPlayer = ({ msg, onClose }) => {
         <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.8}>
           <Text style={{ color: C.sub, fontSize: 16 }}>✕</Text>
         </TouchableOpacity>
+        {url && (
+          <TouchableOpacity
+            onPress={() => saveMediaToDevice(url, 'video.mp4')}
+            style={styles.saveBtn}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: C.sub, fontSize: 16 }}>⬇</Text>
+          </TouchableOpacity>
+        )}
 
         {url ? (
           <VideoView
@@ -317,6 +358,12 @@ const styles = StyleSheet.create({
   },
   closeBtn: {
     position: 'absolute', top: 52, right: 16,
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: C.s2, borderWidth: 1, borderColor: C.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  saveBtn: {
+    position: 'absolute', top: 52, right: 62,
     width: 38, height: 38, borderRadius: 12,
     backgroundColor: C.s2, borderWidth: 1, borderColor: C.border,
     alignItems: 'center', justifyContent: 'center',

@@ -28,8 +28,25 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { mediaDevices, RTCPeerConnection, RTCSessionDescription, RTCIceCandidate } from 'react-native-webrtc';
 import { supabase } from './supabase';
 import * as signalSocket from './signalSocket';
+import { getTurnCredentials } from './api';
 
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+const FALLBACK_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+// Fetched fresh per call from the backend (which holds the Metered API
+// key) rather than shipping static TURN credentials in the app bundle.
+// Falls back to STUN-only if the fetch fails, so a call can still attempt
+// a direct P2P path instead of failing outright.
+async function resolveIceServers() {
+  try {
+    const res = await getTurnCredentials();
+    if (res.ok && Array.isArray(res.data?.iceServers) && res.data.iceServers.length) {
+      return res.data.iceServers;
+    }
+  } catch {
+    // fall through to STUN-only
+  }
+  return FALLBACK_ICE_SERVERS;
+}
 const CallContext = createContext(null);
 
 export function CallProvider({ myUser, children }) {
@@ -70,7 +87,8 @@ export function CallProvider({ myUser, children }) {
 
   const ensurePeerConnection = useCallback(async (peerId, conversationId, wantVideo) => {
     if (pcRef.current) return pcRef.current;
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const iceServers = await resolveIceServers();
+    const pc = new RTCPeerConnection({ iceServers });
     pc.onicecandidate = (e) => {
       if (e.candidate) send({ type: 'ice-candidate', to: peerId, conversationId, candidate: e.candidate });
     };

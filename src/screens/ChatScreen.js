@@ -16,6 +16,7 @@ import {
 } from '../components/bubbles';
 import { ReportModal, SendMoneyScreen } from './ModalsAndOverlays';
 import { supabase } from '../lib/supabase';
+import { File } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import { encryptMessage, decryptMessage, isEncryptedPayload } from '../lib/e2e';
 import { createPaypalOrder, capturePaypalOrder, getMediaUploadUrl } from '../lib/api';
@@ -342,25 +343,45 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     }
     const { path, token } = upRes.data;
 
-    // storage-js's uploadToSignedUrl silently drops fileOptions.contentType
-    // whenever the body is a Blob (it takes a separate FormData code path
-    // that never reads that option) — every upload was landing in storage
-    // as text/plain regardless of the real file. Uploading as an
-    // ArrayBuffer instead forces the SDK into the branch that actually
-    // sets the content-type header from our option.
-    const fileBuffer = await (await fetch(asset.uri)).arrayBuffer();
+    // Streamed straight from disk via expo-file-system's File.upload()
+    // (BINARY_CONTENT mode — raw bytes, not multipart) instead of reading
+    // the whole file into a JS ArrayBuffer first. The old fetch().arrayBuffer()
+    // approach loaded entire videos into memory before sending, which threw
+    // OutOfMemoryError on real videos (images were small enough to get away
+    // with it). This hits the same Supabase signed-upload endpoint
+    // storage-js's uploadToSignedUrl uses internally
+    // (PUT {SUPABASE_URL}/storage/v1/object/upload/sign/{bucket}/{path}?token=...),
+    // so it still needs the same headers storage-js would have set:
+    // apikey + Authorization (for the gateway) and content-type + cache-control
+    // (so the file doesn't land in storage as application/octet-stream).
     const CONTENT_TYPES = {
       jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
       webp: 'image/webp', heic: 'image/heic',
       mp4: 'video/mp4', mov: 'video/quicktime', m4a: 'audio/m4a',
     };
     const contentType = CONTENT_TYPES[fileExt] || 'application/octet-stream';
-    // Bucket name matches MEDIA_BUCKET's default in QualysBridge-Backend/src/config.js.
-    const { error: uploadErr } = await supabase.storage
-      .from('qualys-family-media')
-      .uploadToSignedUrl(path, token, fileBuffer, { contentType });
-    if (uploadErr) {
-      setSendError(uploadErr.message || 'Upload failed');
+    const { data: { session } } = await supabase.auth.getSession();
+    const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+    const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/upload/sign/qualys-family-media/${path}?token=${token}`;
+    let uploadResult;
+    try {
+      const file = new File(asset.uri);
+      uploadResult = await file.upload(uploadUrl, {
+        httpMethod: 'PUT',
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${session?.access_token || anonKey}`,
+          'content-type': contentType,
+          'cache-control': 'max-age=3600',
+          'x-upsert': 'false',
+        },
+      });
+    } catch (err) {
+      setSendError(err.message || 'Upload failed');
+      return;
+    }
+    if (!uploadResult || uploadResult.status < 200 || uploadResult.status >= 300) {
+      setSendError('Upload failed');
       return;
     }
 

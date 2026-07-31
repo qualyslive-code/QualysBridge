@@ -57,3 +57,7 @@ export function getMediaDownloadUrl({ path }) {
     body: JSON.stringify({ path }),
   });
 }
+
+export function getTurnCredentials() {
+  return authedFetch('/calls/turn-credentials', { method: 'GET' });
+}
