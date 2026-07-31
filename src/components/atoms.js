@@ -3,7 +3,7 @@
 //          inline CSS → StyleSheet, keyframes → Animated,
 //          GRAIN_URL dropped (no SVG filter support in RN; replaced by subtle opacity layer)
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Animated,
   ActivityIndicator,
@@ -14,6 +14,7 @@ import { C, F } from '../theme';
 
 // ── AVATAR ────────────────────────────────────────────────────────────────────
 export const Av = ({ name, color, size = 44, online = false, style, avatarUrl }) => {
+  const [imgFailed, setImgFailed] = useState(false);
   const initials = name
     .split(' ')
     .map((w) => w[0])
@@ -24,11 +25,12 @@ export const Av = ({ name, color, size = 44, online = false, style, avatarUrl })
 
   return (
     <View style={[{ position: 'relative', flexShrink: 0 }, style]}>
-      {avatarUrl ? (
+      {avatarUrl && !imgFailed ? (
         <Image
           source={{ uri: avatarUrl }}
           style={[styles.avBase, { width: size, height: size, borderRadius: size / 2 }]}
           contentFit="cover"
+          onError={() => setImgFailed(true)}
         />
       ) : (
       <LinearGradient
