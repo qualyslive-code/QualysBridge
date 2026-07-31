@@ -26,7 +26,8 @@ export async function decryptMessage(payloadJson, senderPublicKeyB64, recipientP
       sodium.from_base64(c), sodium.from_base64(n), senderPk, recipientSk
     );
     return sodium.to_string(plain);
-  } catch {
+  } catch (e) {
+    console.warn('[E2E] decryptMessage failed:', e?.message || e);
     return null;
   }
 }
@@ -44,20 +45,93 @@ export function isEncryptedPayload(body) {
 
 import * as SecureStore from 'expo-secure-store';
 
+let ensureKeyPairPromise = null;
+
 export async function ensureKeyPair(userId) {
-  await sodium.ready;
-  const existing = await SecureStore.getItemAsync(`e2e_privkey_${userId}`);
-  if (existing) return;
+  if (ensureKeyPairPromise) return ensureKeyPairPromise;
 
-  const { publicKey, privateKey } = sodium.crypto_box_keypair();
-  const pubB64 = sodium.to_base64(publicKey);
-  const privB64 = sodium.to_base64(privateKey);
+  ensureKeyPairPromise = (async () => {
+    await sodium.ready;
+    const existing = await SecureStore.getItemAsync(`e2e_privkey_${userId}`);
 
-  await SecureStore.setItemAsync(`e2e_privkey_${userId}`, privB64);
+    if (existing) {
+      const { data } = await supabase
+        .from('app_user')
+        .select('public_key')
+        .eq('id', userId)
+        .single();
 
-  const { error } = await supabase
+      if (data?.public_key) return;
+
+      const privateKey = sodium.from_base64(existing);
+      const publicKey = sodium.crypto_scalarmult_base(privateKey);
+      const pubB64 = sodium.to_base64(publicKey);
+
+      const { error } = await supabase
+        .from('app_user')
+        .update({
+        public_key: pubB64,
+        key_generated_at: new Date().toISOString()
+      })
+        .eq('id', userId);
+      if (error) throw error;
+      return;
+    }
+
+    const { publicKey, privateKey } = sodium.crypto_box_keypair();
+    const pubB64 = sodium.to_base64(publicKey);
+    const privB64 = sodium.to_base64(privateKey);
+
+    await SecureStore.setItemAsync(`e2e_privkey_${userId}`, privB64);
+
+    const { error } = await supabase
+      .from('app_user')
+      .update({
+        public_key: pubB64,
+        key_generated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+    if (error) throw error;
+  })();
+
+  try {
+    return await ensureKeyPairPromise;
+  } finally {
+    ensureKeyPairPromise = null;
+  }
+}
+
+
+export async function verifyKeyIntegrity(userId) {
+  const local = await SecureStore.getItemAsync(`e2e_privkey_${userId}`);
+  if (!local) return false;
+
+  const { data, error } = await supabase
     .from('app_user')
-    .update({ public_key: pubB64 })
-    .eq('id', userId);
-  if (error) throw error;
+    .select('public_key')
+    .eq('id', userId)
+    .single();
+
+  if (error) {
+    console.warn('[E2E] verifyKeyIntegrity lookup failed:', error.message);
+    return false;
+  }
+  return !!data?.public_key;
+}
+
+export async function retryEnsureKeyPair(userId, retries = 3) {
+  let lastErr;
+  for (let i = 0; i < retries; i++) {
+    try {
+      await ensureKeyPair(userId);
+      return;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[E2E] ensureKeyPair attempt ${i + 1}/${retries} failed:`, e?.message || e);
+      if (i < retries - 1) {
+        await new Promise((res) => setTimeout(res, 500 * (i + 1)));
+      }
+    }
+  }
+  throw lastErr;
 }

@@ -15,6 +15,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { getMediaUploadUrl } from '../lib/api';
+import * as Application from 'expo-application';
 
 export function ProfileSetupScreen({ gUser, onDone }) {
   const [name,  setName]  = useState(gUser?.name?.split(' ')[0] ?? '');
@@ -40,13 +41,20 @@ export function ProfileSetupScreen({ gUser, onDone }) {
     if (!name.trim()) { setErr('Choose a display name.'); return; }
     setSubmitting(true);
     setErr('');
+    const deviceId = Application.getAndroidId(); // stable per-device, survives reinstall
+
     const { data: row, error } = await supabase.rpc('create_profile', {
       p_display_name: name.trim().slice(0, 40),
       p_color: color,
+      p_device_id: deviceId,
     });
     setSubmitting(false);
     if (error) {
       console.error('[ProfileSetupScreen] create_profile', error);
+      if (error.message?.includes('DEVICE_ALREADY_BOUND')) {
+        setErr('This device already has an account. Log in instead.');
+        return;
+      }
       setErr('Could not create your profile — try again.');
       return;
     }
