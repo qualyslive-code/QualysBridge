@@ -11,13 +11,15 @@ import { C, PALETTE } from '../theme';
 import { PBtn } from '../components/atoms';
 import { supabase } from '../lib/supabase';
 import sodium from 'react-native-libsodium';
+import { ensureKeyPair } from '../lib/e2e';
 import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { getMediaUploadUrl } from '../lib/api';
 import * as Application from 'expo-application';
+import { getAppInstanceId } from '../lib/deviceIdentity';
 
-export function ProfileSetupScreen({ gUser, onDone }) {
+export function ProfileSetupScreen({ gUser, onDone, onNeedLogin }) {
   const [name,  setName]  = useState(gUser?.name?.split(' ')[0] ?? '');
   const [color, setColor] = useState('#5E4FE8');
   const [err,   setErr]   = useState('');
@@ -42,36 +44,31 @@ export function ProfileSetupScreen({ gUser, onDone }) {
     setSubmitting(true);
     setErr('');
     const deviceId = Application.getAndroidId(); // stable per-device, survives reinstall
+    const instanceId = await getAppInstanceId(); // app-controlled UUID, survives Android ID quirks
 
     const { data: row, error } = await supabase.rpc('create_profile', {
       p_display_name: name.trim().slice(0, 40),
       p_color: color,
       p_device_id: deviceId,
+      p_instance_id: instanceId,
     });
     setSubmitting(false);
     if (error) {
       console.error('[ProfileSetupScreen] create_profile', error);
       if (error.message?.includes('DEVICE_ALREADY_BOUND')) {
         setErr('This device already has an account. Log in instead.');
+        onNeedLogin?.();
         return;
       }
       setErr('Could not create your profile — try again.');
       return;
     }
-    await sodium.ready;
-    const keypair = sodium.crypto_box_keypair();
-    const privateKeyB64 = sodium.to_base64(keypair.privateKey);
-    const publicKeyB64 = sodium.to_base64(keypair.publicKey);
-
-    await SecureStore.setItemAsync(`e2e_privkey_${row.id}`, privateKeyB64);
-
-    const { error: keyError } = await supabase
-      .from('app_user')
-      .update({ public_key: publicKeyB64 })
-      .eq('id', row.id);
-
-    if (keyError) {
-      console.warn('[e2e] failed to save public_key:', keyError);
+    try {
+      await ensureKeyPair(row.id);
+    } catch (e) {
+      console.error('[ProfileSetupScreen] ensureKeyPair failed:', e);
+      setErr('Profile created, but key setup failed. Restart the app to retry.');
+      return;
     }
 
     let avatarUrl = null;

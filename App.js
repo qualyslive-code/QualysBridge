@@ -197,6 +197,7 @@ export default function App() {
           <ProfileSetupScreen
             gUser={gUser}
             onDone={(u) => { setUser(u); setStep('reveal'); }}
+            onNeedLogin={() => setStep('login')}
           />
         )}
         {step === 'reveal'  && user && (
