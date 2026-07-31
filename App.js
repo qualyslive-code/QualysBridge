@@ -29,6 +29,7 @@ import GroupCallOverlay      from './src/screens/GroupCallOverlay';
 import GroupCallInviteOverlay from './src/screens/GroupCallInviteOverlay';
 import IncomingCallOverlay   from './src/screens/IncomingCallOverlay';
 import SelfNotesScreen       from './src/screens/SelfNotesScreen';
+import BrandSplashScreen     from './src/screens/BrandSplashScreen';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -60,10 +61,19 @@ export default function App() {
   const [chat,    setChat]    = useState(null);      // active contact
   const [settings, setSettings] = useState(false);
   const [selfNotes, setSelfNotes] = useState(false);
+  const [showBrandSplash, setShowBrandSplash] = useState(false);
   const [fontsLoaded] = useFonts({ Syne_700Bold, Syne_800ExtraBold });
   const [interLoaded] = useInterFonts({
     Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
   });
+
+  useEffect(() => {
+    if (step === 'home') {
+      setShowBrandSplash(true);
+      const t = setTimeout(() => setShowBrandSplash(false), 1400);
+      return () => clearTimeout(t);
+    }
+  }, [step]);
 
   const onLayoutRoot = useCallback(async () => {
     if (fontsLoaded && interLoaded) await SplashScreen.hideAsync();
@@ -195,7 +205,10 @@ export default function App() {
             onEnter={() => setStep('home')}
           />
         )}
-        {step === 'home'    && user && (
+        {step === 'home'    && user && showBrandSplash && (
+          <BrandSplashScreen />
+        )}
+        {step === 'home'    && user && !showBrandSplash && (
           <HomeScreen
             user={user}
             onOpenChat={(contact) => setChat(contact)}
