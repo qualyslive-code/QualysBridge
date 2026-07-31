@@ -27,3 +27,13 @@ export const ago = (ts) => {
 
 export const fmtDur = (s) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+// Real diary-style date + time, not a relative "2m ago" tag — a self-note
+// written today should still read clearly as "Jul 14 · 3:42 PM" a year
+// from now, not lose meaning the moment it's no longer recent.
+export const fmtDateTime = (ts) => {
+  const d = new Date(ts);
+  const datePart = d.toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' });
+  const timePart = d.toLocaleTimeString('en', { hour: 'numeric', minute: '2-digit' });
+  return `${datePart} · ${timePart}`;
+};
