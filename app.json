@@ -9,11 +9,6 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#07070F",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#07070F"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.qualys.bridge",
@@ -42,13 +37,29 @@
       "expo-secure-store",
       "expo-image",
       "expo-video",
-      ["expo-build-properties", {"android": {"largeHeap": true}}],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "largeHeap": true
+          }
+        }
+      ],
       [
         "expo-media-library",
         {
           "photosPermission": "Allow $(PRODUCT_NAME) to save photos you receive to your gallery.",
           "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos and videos you receive to your gallery.",
           "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#07070F"
         }
       ]
     ],
