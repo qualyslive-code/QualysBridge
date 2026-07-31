@@ -80,11 +80,11 @@ export function ProfileSetupScreen({ gUser, onDone }) {
             .from('qualys-family-media')
             .uploadToSignedUrl(path, token, fileBuffer, { contentType });
           if (!uploadErr) {
-            const { data: signed } = await supabase.storage
+            const { data: pub } = supabase.storage
               .from('qualys-family-media')
-              .createSignedUrl(path, 60 * 60 * 24 * 365);
-            await supabase.from('app_user').update({ avatar_url: path }).eq('id', row.id);
-            avatarUrl = signed?.signedUrl ?? null;
+              .getPublicUrl(path);
+            avatarUrl = pub?.publicUrl ?? null;
+            await supabase.from('app_user').update({ avatar_url: avatarUrl }).eq('id', row.id);
           }
         }
       } catch (photoErr) {

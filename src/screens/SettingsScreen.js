@@ -48,14 +48,15 @@ export default function SettingsScreen({ user, onBack, onLogout, onAvatarUpdated
         .from('qualys-family-media')
         .uploadToSignedUrl(path, token, fileBuffer, { contentType });
       if (uploadErr) return;
-      const { data: signed } = await supabase.storage
+      const { data: pub } = supabase.storage
         .from('qualys-family-media')
-        .createSignedUrl(path, 60 * 60 * 24 * 365);
+        .getPublicUrl(path);
+      const publicUrl = pub?.publicUrl;
       const { error: dbErr } = await supabase
         .from('app_user')
-        .update({ avatar_url: path })
+        .update({ avatar_url: publicUrl })
         .eq('id', user.id);
-      if (!dbErr) onAvatarUpdated?.(signed?.signedUrl ?? path);
+      if (!dbErr) onAvatarUpdated?.(publicUrl);
     } finally {
       setAvatarUploading(false);
     }
