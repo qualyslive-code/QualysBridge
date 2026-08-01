@@ -69,8 +69,14 @@ export default function CallOverlay() {
       const id = setInterval(() => setElapsed(Math.floor((Date.now() - activeSinceRef.current) / 1000)), 1000);
       return () => clearInterval(id);
     }
-    activeSinceRef.current = null;
-    setElapsed(0);
+    // 'reconnecting' pauses the timer display (interval above just stops
+    // ticking) without resetting activeSinceRef — a brief ICE hiccup
+    // shouldn't zero out a call that's genuinely been going for minutes.
+    // Only a real end (idle/dialing/connecting from scratch) clears it.
+    if (status.state !== 'reconnecting') {
+      activeSinceRef.current = null;
+      setElapsed(0);
+    }
   }, [status.state]);
 
   if (!display) return null;
@@ -98,6 +104,7 @@ export default function CallOverlay() {
     ? (END_REASON_LABEL[status.reason] || 'Call ended')
     : status.state === 'dialing' ? 'CALLING…'
     : status.state === 'connecting' ? 'CONNECTING…'
+    : status.state === 'reconnecting' ? 'RECONNECTING…'
     : status.state === 'active' ? `ON CALL · ${fmtElapsed(elapsed)}`
     : 'CONNECTING…';
 

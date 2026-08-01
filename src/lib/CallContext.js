@@ -19,8 +19,11 @@
 //   ← unavailable {conversationId, reason: 'unavailable'}
 //
 // Call lifecycle, exposed as status: { state, reason }:
-//   idle → dialing → connecting → active → idle
-//              ↘ incoming (callee, pre-accept) → connecting → active → idle
+//   idle → dialing → connecting → active ⇄ reconnecting → idle
+//              ↘ incoming (callee, pre-accept) → connecting → active ⇄ reconnecting → idle
+//   'reconnecting' fires on ICE 'disconnected' (see oniceconnectionstatechange
+//   in ensurePeerConnection) and either recovers back to 'active' or, after
+//   ICE_RECONNECT_GRACE_MS with no recovery, ends the call as 'network_lost'.
 //   `reason` is only meaningful right as a call ends: declined | busy |
 //   unavailable | timeout | cancelled | hangup | network_lost |
 //   permission_denied | media_error | null.
@@ -57,6 +60,12 @@ const FALLBACK_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 // never arrives (e.g. a network partition on this device specifically).
 const CLIENT_DIALING_TIMEOUT_MS = 42000;
 
+// How long an active call tolerates ICE 'disconnected' (a WebRTC state
+// that's often transient — brief wifi hiccup, network handoff) before
+// treating it as a real loss and ending the call. 'failed' (ICE gave up
+// trying) skips this grace period entirely and ends immediately.
+const ICE_RECONNECT_GRACE_MS = 10000;
+
 // Fetched fresh per call from the backend (which holds the Metered API
 // key) rather than shipping static TURN credentials in the app bundle.
 // Falls back to STUN-only if the fetch fails, so a call can still attempt
@@ -89,6 +98,11 @@ export function CallProvider({ myUser, children }) {
   const knownUsers = useRef(new Map());
   const dialingTimeoutRef = useRef(null);
   const callLockRef = useRef(false); // synchronous debounce, independent of render timing
+  const iceReconnectTimerRef = useRef(null);
+  // ensurePeerConnection is declared before endCall in this file, so its
+  // oniceconnectionstatechange closure can't reference endCall directly —
+  // this ref is populated right after endCall's own definition below.
+  const endCallRef = useRef(null);
   activeCallRef.current = activeCall;
   incomingCallRef.current = incomingCall;
   statusRef.current = status;
@@ -114,6 +128,7 @@ export function CallProvider({ myUser, children }) {
   }, []);
 
   const teardownPeer = useCallback(() => {
+    if (iceReconnectTimerRef.current) { clearTimeout(iceReconnectTimerRef.current); iceReconnectTimerRef.current = null; }
     pcRef.current?.close();
     pcRef.current = null;
     localStream?.getTracks().forEach((t) => t.stop());
@@ -129,6 +144,31 @@ export function CallProvider({ myUser, children }) {
       if (e.candidate) send({ type: 'ice-candidate', to: peerId, conversationId, candidate: e.candidate });
     };
     pc.ontrack = (e) => setRemoteStream(e.streams[0]);
+    pc.oniceconnectionstatechange = () => {
+      const iceState = pc.iceConnectionState;
+      const call = activeCallRef.current;
+
+      if (iceState === 'disconnected') {
+        if (statusRef.current.state !== 'active') return;
+        setCallState('reconnecting');
+        if (iceReconnectTimerRef.current) clearTimeout(iceReconnectTimerRef.current);
+        iceReconnectTimerRef.current = setTimeout(() => {
+          iceReconnectTimerRef.current = null;
+          const st = pcRef.current?.iceConnectionState;
+          if (st === 'disconnected' || st === 'failed') {
+            if (call) send({ type: 'hangup', to: call.contact.id, conversationId: call.conversationId, reason: 'network_lost' });
+            endCallRef.current?.('network_lost');
+          }
+        }, ICE_RECONNECT_GRACE_MS);
+      } else if (iceState === 'connected' || iceState === 'completed') {
+        if (iceReconnectTimerRef.current) { clearTimeout(iceReconnectTimerRef.current); iceReconnectTimerRef.current = null; }
+        if (statusRef.current.state === 'reconnecting') setCallState('active');
+      } else if (iceState === 'failed') {
+        if (iceReconnectTimerRef.current) { clearTimeout(iceReconnectTimerRef.current); iceReconnectTimerRef.current = null; }
+        if (call) send({ type: 'hangup', to: call.contact.id, conversationId: call.conversationId, reason: 'network_lost' });
+        endCallRef.current?.('network_lost');
+      }
+    };
     let stream;
     try {
       stream = await mediaDevices.getUserMedia({ audio: true, video: wantVideo });
@@ -156,6 +196,7 @@ export function CallProvider({ myUser, children }) {
     setActiveCall(null);
     setCallState('idle', reason);
   }, [teardownPeer, clearDialingTimeout, setCallState]);
+  endCallRef.current = endCall;
 
   const startOutgoingCall = useCallback((peerId, conversationId, mode, contact) => {
     if (callLockRef.current || activeCallRef.current) return; // debounce + can't start a second call
