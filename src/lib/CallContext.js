@@ -81,6 +81,28 @@ async function resolveIceServers() {
   }
   return FALLBACK_ICE_SERVERS;
 }
+function computeCallQuality(report) {
+  let rttMs = null;
+  let packetsLost = 0;
+  let packetsReceived = 0;
+  let jitterMs = null;
+  report.forEach((stat) => {
+    if (stat.type === 'candidate-pair' && stat.state === 'succeeded' && typeof stat.currentRoundTripTime === 'number') {
+      rttMs = stat.currentRoundTripTime * 1000;
+    }
+    if (stat.type === 'inbound-rtp' && !stat.isRemote) {
+      if (typeof stat.packetsLost === 'number') packetsLost += stat.packetsLost;
+      if (typeof stat.packetsReceived === 'number') packetsReceived += stat.packetsReceived;
+      if (typeof stat.jitter === 'number' && jitterMs === null) jitterMs = stat.jitter * 1000;
+    }
+  });
+  if (rttMs === null) return null;
+  const lossRatio = packetsReceived > 0 ? packetsLost / (packetsLost + packetsReceived) : 0;
+  if (rttMs < 150 && lossRatio < 0.02 && (jitterMs === null || jitterMs < 30)) return 'excellent';
+  if (rttMs < 350 && lossRatio < 0.08) return 'good';
+  return 'poor';
+}
+
 const CallContext = createContext(null);
 
 export function CallProvider({ myUser, children }) {
@@ -90,6 +112,7 @@ export function CallProvider({ myUser, children }) {
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [speakerOn, setSpeakerOn] = useState(false);
+  const [callQuality, setCallQuality] = useState(null);
 
   const pcRef = useRef(null);
   const activeCallRef = useRef(null);
@@ -279,6 +302,18 @@ export function CallProvider({ myUser, children }) {
     });
   }, []);
 
+  useEffect(() => {
+    if (status.state !== 'active') { setCallQuality(null); return; }
+    const id = setInterval(async () => {
+      if (!pcRef.current) return;
+      try {
+        const report = await pcRef.current.getStats();
+        setCallQuality(computeCallQuality(report));
+      } catch {}
+    }, 3000);
+    return () => clearInterval(id);
+  }, [status.state]);
+
   const handleMessage = useCallback(async (msg) => {
     // signalSocket now dispatches group-call room messages to every
     // subscriber too — ignore them here, GroupCallContext owns those.
@@ -390,7 +425,7 @@ export function CallProvider({ myUser, children }) {
     <CallContext.Provider value={{
       incomingCall, activeCall, phase, status, localStream, remoteStream,
       startOutgoingCall, acceptIncomingCall, declineIncomingCall, hangup,
-      speakerOn, toggleSpeaker,
+      speakerOn, toggleSpeaker, callQuality,
     }}>
       {children}
     </CallContext.Provider>

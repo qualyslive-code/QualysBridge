@@ -30,13 +30,16 @@ const END_REASON_LABEL = {
   media_error: 'Could not access camera or mic',
 };
 
+const QUALITY_LABEL = { excellent: 'Excellent', good: 'Good', poor: 'Poor connection' };
+const QUALITY_COLOR = { excellent: '#2ecc71', good: '#f1c40f', poor: '#e74c3c' };
+
 const DISMISS_DELAY_MS = 1400;
 
 const fmtElapsed = (s) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 export default function CallOverlay() {
-  const { activeCall, status, localStream, remoteStream, hangup, speakerOn, toggleSpeaker } = useCallContext();
+  const { activeCall, status, localStream, remoteStream, hangup, speakerOn, toggleSpeaker, callQuality } = useCallContext();
   const insets = useSafeAreaInsets();
   const [muted, setMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
@@ -114,6 +117,9 @@ export default function CallOverlay() {
         <RTCView streamURL={remoteStream.toURL()} style={co.remoteVideo} objectFit="cover" />
       )}
       <Text style={co.status}>{statusText}</Text>
+      {status.state === 'active' && callQuality && (
+        <Text style={[co.quality, { color: QUALITY_COLOR[callQuality] }]}>● {QUALITY_LABEL[callQuality]}</Text>
+      )}
       {!(display.mode === 'video' && remoteStream) && (
         <View style={{ marginBottom: 24 }}><Av name={display.contact.name} color={display.contact.color} size={96} /></View>
       )}
@@ -152,7 +158,8 @@ export default function CallOverlay() {
 const co = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: C.bg, alignItems: 'center', paddingBottom: 40, zIndex: 999 },
   remoteVideo: { ...StyleSheet.absoluteFillObject },
-  status: { color: C.sub, fontSize: 13, letterSpacing: 1, marginTop: 60, marginBottom: 20 },
+  status: { color: C.sub, fontSize: 13, letterSpacing: 1, marginTop: 60, marginBottom: 4 },
+  quality: { fontSize: 11, marginBottom: 16, letterSpacing: 0.3 },
   name: { color: C.text, fontSize: 22, fontWeight: '600', marginTop: 4 },
   subLabel: { color: C.sub, fontSize: 13, marginTop: 4 },
   pip: { position: 'absolute', top: 60, right: 20, width: 90, height: 130, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: C.border },
