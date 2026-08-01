@@ -16,6 +16,7 @@ import { C } from './src/theme';
 import { supabase } from './src/lib/supabase';
 import { createSessionFromUrl } from './src/lib/authSession';
 import { retryEnsureKeyPair } from './src/lib/e2e';
+import { registerPushToken } from './src/lib/pushToken';
 import { CallProvider } from './src/lib/CallContext';
 import { GroupCallProvider } from './src/lib/GroupCallContext';
 
@@ -112,6 +113,9 @@ export default function App() {
         // Returning user — profile already exists, skip straight to home.
         retryEnsureKeyPair(session.user.id).catch((e) =>
           console.error('[App] ensureKeyPair', e)
+        );
+        registerPushToken(session.user.id).catch((e) =>
+          console.error('[App] registerPushToken', e)
         );
         setUser(toUserShape(row));
         setStep('home');
