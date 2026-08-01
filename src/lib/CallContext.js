@@ -45,7 +45,7 @@
 //     still belong to CallOverlay/IncomingCallOverlay — not this file.
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { AppState } from 'react-native';
+import { AppState, DeviceEventEmitter } from 'react-native';
 import { mediaDevices, RTCPeerConnection, RTCSessionDescription, RTCIceCandidate } from 'react-native-webrtc';
 import InCallManager from 'react-native-incall-manager';
 import { supabase } from './supabase';
@@ -109,6 +109,7 @@ export function CallProvider({ myUser, children }) {
   const [incomingCall, setIncomingCall] = useState(null); // { conversationId, mode, caller } | null
   const [activeCall, setActiveCall] = useState(null);     // { conversationId, mode, contact, isIncoming } | null
   const [status, setStatus] = useState({ state: 'idle', reason: null }); // dialing|connecting|active|idle
+  const [muted, setMuted] = useState(false);
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [speakerOn, setSpeakerOn] = useState(false);
@@ -126,6 +127,9 @@ export function CallProvider({ myUser, children }) {
   // oniceconnectionstatechange closure can't reference endCall directly —
   // this ref is populated right after endCall's own definition below.
   const endCallRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const mutedRef = useRef(false);
+  const focusMutedRef = useRef(false);
   activeCallRef.current = activeCall;
   incomingCallRef.current = incomingCall;
   statusRef.current = status;
@@ -294,6 +298,38 @@ export function CallProvider({ myUser, children }) {
     }
   }, [activeCall]);
 
+  useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
+
+  const toggleMute = useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      mutedRef.current = next;
+      localStreamRef.current?.getAudioTracks().forEach((t) => { t.enabled = !next; });
+      return next;
+    });
+  }, []);
+
+  // Android-only: react to phone-call/alarm/other-app interruptions.
+  // LOSS / LOSS_TRANSIENT both silence us; CAN_DUCK is left to the OS.
+  // On regain, only restore audio if we muted it for focus and the user
+  // hasn't also manually muted themselves in the meantime.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('onAudioFocusChange', ({ eventText }) => {
+      if (eventText === 'AUDIOFOCUS_LOSS' || eventText === 'AUDIOFOCUS_LOSS_TRANSIENT') {
+        focusMutedRef.current = true;
+        localStreamRef.current?.getAudioTracks().forEach((t) => { t.enabled = false; });
+      } else if (eventText?.startsWith('AUDIOFOCUS_GAIN')) {
+        if (focusMutedRef.current && !mutedRef.current) {
+          localStreamRef.current?.getAudioTracks().forEach((t) => { t.enabled = true; });
+        }
+        focusMutedRef.current = false;
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   const toggleSpeaker = useCallback(() => {
     setSpeakerOn((prev) => {
       const next = !prev;
@@ -425,7 +461,7 @@ export function CallProvider({ myUser, children }) {
     <CallContext.Provider value={{
       incomingCall, activeCall, phase, status, localStream, remoteStream,
       startOutgoingCall, acceptIncomingCall, declineIncomingCall, hangup,
-      speakerOn, toggleSpeaker, callQuality,
+      speakerOn, toggleSpeaker, callQuality, muted, toggleMute,
     }}>
       {children}
     </CallContext.Provider>
