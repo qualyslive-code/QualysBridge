@@ -44,6 +44,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { mediaDevices, RTCPeerConnection, RTCSessionDescription, RTCIceCandidate } from 'react-native-webrtc';
+import InCallManager from 'react-native-incall-manager';
 import { supabase } from './supabase';
 import * as signalSocket from './signalSocket';
 import { getTurnCredentials } from './api';
@@ -79,6 +80,7 @@ export function CallProvider({ myUser, children }) {
   const [status, setStatus] = useState({ state: 'idle', reason: null }); // dialing|connecting|active|idle
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
+  const [speakerOn, setSpeakerOn] = useState(false);
 
   const pcRef = useRef(null);
   const activeCallRef = useRef(null);
@@ -210,6 +212,32 @@ export function CallProvider({ myUser, children }) {
     return () => sub.remove();
   }, [hangup]);
 
+  // Native call-audio routing (earpiece/speaker/Bluetooth), keyed off
+  // activeCall's own lifecycle so it can't drift out of sync with the call
+  // state machine — starts the instant a call begins (dialing or accepting,
+  // not just once 'active'), so the proximity sensor and correct default
+  // route are live from the first ring, matching normal phone-call UX.
+  // Video calls default to speakerphone, voice calls default to earpiece.
+  useEffect(() => {
+    if (activeCall) {
+      InCallManager.start({ media: activeCall.mode === 'video' ? 'video' : 'audio' });
+      const defaultSpeaker = activeCall.mode === 'video';
+      InCallManager.setForceSpeakerphoneOn(defaultSpeaker);
+      setSpeakerOn(defaultSpeaker);
+    } else {
+      InCallManager.stop();
+      setSpeakerOn(false);
+    }
+  }, [activeCall]);
+
+  const toggleSpeaker = useCallback(() => {
+    setSpeakerOn((prev) => {
+      const next = !prev;
+      InCallManager.setForceSpeakerphoneOn(next);
+      return next;
+    });
+  }, []);
+
   const handleMessage = useCallback(async (msg) => {
     // signalSocket now dispatches group-call room messages to every
     // subscriber too — ignore them here, GroupCallContext owns those.
@@ -321,6 +349,7 @@ export function CallProvider({ myUser, children }) {
     <CallContext.Provider value={{
       incomingCall, activeCall, phase, status, localStream, remoteStream,
       startOutgoingCall, acceptIncomingCall, declineIncomingCall, hangup,
+      speakerOn, toggleSpeaker,
     }}>
       {children}
     </CallContext.Provider>

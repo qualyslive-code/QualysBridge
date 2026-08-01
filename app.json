@@ -21,7 +21,8 @@
         "backgroundColor": "#07070F"
       },
       "package": "com.qualys.bridge",
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": ["android.permission.BLUETOOTH_CONNECT"]
     },
     "plugins": [
       "expo-font",

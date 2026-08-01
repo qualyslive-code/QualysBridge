@@ -36,11 +36,10 @@ const fmtElapsed = (s) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 export default function CallOverlay() {
-  const { activeCall, status, localStream, remoteStream, hangup } = useCallContext();
+  const { activeCall, status, localStream, remoteStream, hangup, speakerOn, toggleSpeaker } = useCallContext();
   const insets = useSafeAreaInsets();
   const [muted, setMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
-  const [speaker, setSpeaker] = useState(true);
   const [ending, setEnding] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
@@ -90,7 +89,7 @@ export default function CallOverlay() {
 
   const CONTROLS = isEnded ? [] : [
     { icon: muted ? '🔇' : '🎙️', label: muted ? 'Unmute' : 'Mute', action: toggleMuted, active: muted },
-    { icon: speaker ? '🔊' : '🔈', label: speaker ? 'Speaker' : 'Earpiece', action: () => setSpeaker((v) => !v), active: speaker },
+    { icon: speakerOn ? '🔊' : '🔈', label: speakerOn ? 'Speaker' : 'Earpiece', action: toggleSpeaker, active: speakerOn },
     ...(display.mode === 'video' ? [{ icon: camOff ? '📷' : '📸', label: camOff ? 'Cam off' : 'Camera', action: toggleCam, active: camOff }] : []),
     { icon: '📞', label: isPreConnect ? 'Cancel' : 'End', action: handleEnd, end: true, disabled: ending },
   ];
