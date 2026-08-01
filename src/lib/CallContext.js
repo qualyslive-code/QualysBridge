@@ -130,6 +130,7 @@ export function CallProvider({ myUser, children }) {
   const localStreamRef = useRef(null);
   const mutedRef = useRef(false);
   const focusMutedRef = useRef(false);
+  const prevAppStateRef = useRef(AppState.currentState);
   activeCallRef.current = activeCall;
   incomingCallRef.current = incomingCall;
   statusRef.current = status;
@@ -271,14 +272,37 @@ export function CallProvider({ myUser, children }) {
   // means they backed out — don't leave a ghost ringing call behind. Once
   // active, backgrounding is normal (audio calls keep running), so this
   // only fires pre-connect.
+  //
+  // On return to foreground during an active call, only the original
+  // caller re-offers (isIncoming === false) — if both sides tried to
+  // restart simultaneously we'd get offer glare. The callee just waits
+  // for the restart offer via the existing 'offer' handler.
+  const attemptIceRestart = useCallback(async () => {
+    const call = activeCallRef.current;
+    const pc = pcRef.current;
+    if (!call || !pc || call.isIncoming) return;
+    const iceState = pc.iceConnectionState;
+    if (iceState !== 'disconnected' && iceState !== 'failed') return;
+    try {
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
+      send({ type: 'offer', to: call.contact.id, conversationId: call.conversationId, sdp: offer, iceRestart: true });
+    } catch {}
+  }, [send]);
+
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
+      const previous = prevAppStateRef.current;
       if (next === 'background' && activeCallRef.current && statusRef.current.state !== 'active') {
         hangup();
       }
+      if (next === 'active' && previous !== 'active' && activeCallRef.current) {
+        attemptIceRestart();
+      }
+      prevAppStateRef.current = next;
     });
     return () => sub.remove();
-  }, [hangup]);
+  }, [hangup, attemptIceRestart]);
 
   // Native call-audio routing (earpiece/speaker/Bluetooth), keyed off
   // activeCall's own lifecycle so it can't drift out of sync with the call
@@ -400,12 +424,16 @@ export function CallProvider({ myUser, children }) {
         break;
 
       case 'offer': {
-        // We're the callee — build our side and answer.
+        // We're the callee — build our side and answer. On ICE restart the
+        // peer connection already exists; renegotiate on it instead of
+        // treating this as a duplicate initial offer.
         const call = activeCallRef.current;
         if (!call || call.conversationId !== msg.conversationId) return;
-        if (pcRef.current) return; // duplicate offer — already answered, ignore
+        if (pcRef.current && !msg.iceRestart) return; // duplicate initial offer — already answered, ignore
         try {
-          await ensurePeerConnection(call.contact.id, call.conversationId, call.mode === 'video');
+          if (!msg.iceRestart) {
+            await ensurePeerConnection(call.contact.id, call.conversationId, call.mode === 'video');
+          }
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp));
           const answer = await pcRef.current.createAnswer();
           await pcRef.current.setLocalDescription(answer);
