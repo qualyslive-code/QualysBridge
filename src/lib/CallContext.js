@@ -22,7 +22,8 @@
 //   idle → dialing → connecting → active → idle
 //              ↘ incoming (callee, pre-accept) → connecting → active → idle
 //   `reason` is only meaningful right as a call ends: declined | busy |
-//   unavailable | timeout | cancelled | hangup | network_lost | null.
+//   unavailable | timeout | cancelled | hangup | network_lost |
+//   permission_denied | media_error | null.
 //   A legacy `phase` string (idle|ringing|active|ended) is still exposed,
 //   derived from `status`, so CallOverlay/IncomingCallOverlay keep working
 //   unmodified until they're rewired to consume `status` directly.
@@ -126,7 +127,16 @@ export function CallProvider({ myUser, children }) {
       if (e.candidate) send({ type: 'ice-candidate', to: peerId, conversationId, candidate: e.candidate });
     };
     pc.ontrack = (e) => setRemoteStream(e.streams[0]);
-    const stream = await mediaDevices.getUserMedia({ audio: true, video: wantVideo });
+    let stream;
+    try {
+      stream = await mediaDevices.getUserMedia({ audio: true, video: wantVideo });
+    } catch (err) {
+      pc.close();
+      const denied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
+      const tagged = new Error(err?.message || 'media_error');
+      tagged.qbReason = denied ? 'permission_denied' : 'media_error';
+      throw tagged;
+    }
     setLocalStream(stream);
     stream.getTracks().forEach((t) => pc.addTrack(t, stream));
     pcRef.current = pc;
@@ -229,10 +239,15 @@ export function CallProvider({ myUser, children }) {
         if (pcRef.current) return; // duplicate call-accept — already negotiating, ignore
         clearDialingTimeout();
         setCallState('connecting');
-        await ensurePeerConnection(call.contact.id, call.conversationId, call.mode === 'video');
-        const offer = await pcRef.current.createOffer();
-        await pcRef.current.setLocalDescription(offer);
-        send({ type: 'offer', to: call.contact.id, conversationId: call.conversationId, sdp: offer });
+        try {
+          await ensurePeerConnection(call.contact.id, call.conversationId, call.mode === 'video');
+          const offer = await pcRef.current.createOffer();
+          await pcRef.current.setLocalDescription(offer);
+          send({ type: 'offer', to: call.contact.id, conversationId: call.conversationId, sdp: offer });
+        } catch (err) {
+          send({ type: 'hangup', to: call.contact.id, conversationId: call.conversationId, reason: err?.qbReason || 'media_error' });
+          endCall(err?.qbReason || 'media_error');
+        }
         break;
       }
 
@@ -249,12 +264,17 @@ export function CallProvider({ myUser, children }) {
         const call = activeCallRef.current;
         if (!call || call.conversationId !== msg.conversationId) return;
         if (pcRef.current) return; // duplicate offer — already answered, ignore
-        await ensurePeerConnection(call.contact.id, call.conversationId, call.mode === 'video');
-        await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-        const answer = await pcRef.current.createAnswer();
-        await pcRef.current.setLocalDescription(answer);
-        send({ type: 'answer', to: call.contact.id, conversationId: call.conversationId, sdp: answer });
-        setCallState('active');
+        try {
+          await ensurePeerConnection(call.contact.id, call.conversationId, call.mode === 'video');
+          await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+          const answer = await pcRef.current.createAnswer();
+          await pcRef.current.setLocalDescription(answer);
+          send({ type: 'answer', to: call.contact.id, conversationId: call.conversationId, sdp: answer });
+          setCallState('active');
+        } catch (err) {
+          send({ type: 'hangup', to: call.contact.id, conversationId: call.conversationId, reason: err?.qbReason || 'media_error' });
+          endCall(err?.qbReason || 'media_error');
+        }
         break;
       }
 

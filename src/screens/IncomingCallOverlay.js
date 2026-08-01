@@ -1,7 +1,7 @@
 // src/screens/IncomingCallOverlay.js — global ringing screen, shows
 // whenever CallContext.incomingCall is set, on top of any screen. App-wide
 // because CallProvider's socket is opened once at app start, not per-screen.
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C } from '../theme';
@@ -11,7 +11,16 @@ import { useCallContext } from '../lib/CallContext';
 export default function IncomingCallOverlay() {
   const { incomingCall, acceptIncomingCall, declineIncomingCall } = useCallContext();
   const insets = useSafeAreaInsets();
+  const [responding, setResponding] = useState(false);
+
+  // A new incoming call always means a fresh overlay instance for it —
+  // reset the guard so a prior call's tap can't leave this one stuck.
+  useEffect(() => { if (!incomingCall) setResponding(false); }, [incomingCall]);
+
   if (!incomingCall) return null;
+
+  const handleDecline = () => { if (responding) return; setResponding(true); declineIncomingCall(); };
+  const handleAccept = () => { if (responding) return; setResponding(true); acceptIncomingCall(); };
 
   return (
     <View style={[ic.overlay, { paddingTop: insets.top + 40 }]}>
@@ -20,10 +29,20 @@ export default function IncomingCallOverlay() {
       <Text style={ic.name}>{incomingCall.caller.name}</Text>
       <View style={{ flex: 1 }} />
       <View style={ic.row}>
-        <TouchableOpacity onPress={declineIncomingCall} style={[ic.btn, { backgroundColor: C.danger }]} activeOpacity={0.85}>
+        <TouchableOpacity
+          onPress={handleDecline}
+          disabled={responding}
+          style={[ic.btn, { backgroundColor: C.danger }, responding && { opacity: 0.5 }]}
+          activeOpacity={0.85}
+        >
           <Text style={ic.btnIcon}>📞</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={acceptIncomingCall} style={[ic.btn, { backgroundColor: C.money }]} activeOpacity={0.85}>
+        <TouchableOpacity
+          onPress={handleAccept}
+          disabled={responding}
+          style={[ic.btn, { backgroundColor: C.money }, responding && { opacity: 0.5 }]}
+          activeOpacity={0.85}
+        >
           <Text style={ic.btnIcon}>📞</Text>
         </TouchableOpacity>
       </View>
