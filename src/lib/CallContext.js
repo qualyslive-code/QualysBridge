@@ -48,6 +48,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { AppState, DeviceEventEmitter } from 'react-native';
 import { mediaDevices, RTCPeerConnection, RTCSessionDescription, RTCIceCandidate } from 'react-native-webrtc';
 import InCallManager from 'react-native-incall-manager';
+import * as Notifications from 'expo-notifications';
 import { supabase } from './supabase';
 import * as signalSocket from './signalSocket';
 import { getTurnCredentials } from './api';
@@ -131,6 +132,24 @@ export function CallProvider({ myUser, children }) {
   const mutedRef = useRef(false);
   const focusMutedRef = useRef(false);
   const prevAppStateRef = useRef(AppState.currentState);
+  const incomingNotifIdRef = useRef(null);
+
+  useEffect(() => {
+    Notifications.setNotificationChannelAsync('incoming-calls', {
+      name: 'Incoming calls',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
+      vibrationPattern: [0, 250, 250, 250],
+    });
+  }, []);
+
+  const dismissIncomingNotification = useCallback(async () => {
+    const id = incomingNotifIdRef.current;
+    if (id) {
+      incomingNotifIdRef.current = null;
+      try { await Notifications.dismissNotificationAsync(id); } catch {}
+    }
+  }, []);
   activeCallRef.current = activeCall;
   incomingCallRef.current = incomingCall;
   statusRef.current = status;
@@ -253,14 +272,16 @@ export function CallProvider({ myUser, children }) {
     setCallState('connecting');
     send({ type: 'call-accept', to: call.caller.id, conversationId: call.conversationId });
     setIncomingCall(null);
-  }, [send, setCallState]);
+    dismissIncomingNotification();
+  }, [send, setCallState, dismissIncomingNotification]);
 
   const declineIncomingCall = useCallback(() => {
     const call = incomingCallRef.current;
     if (!call) return;
     send({ type: 'call-decline', to: call.caller.id, conversationId: call.conversationId });
     setIncomingCall(null);
-  }, [send]);
+    dismissIncomingNotification();
+  }, [send, dismissIncomingNotification]);
 
   const hangup = useCallback(() => {
     const call = activeCallRef.current;
@@ -382,8 +403,24 @@ export function CallProvider({ myUser, children }) {
     switch (msg.type) {
       case 'incoming-call': {
         if (activeCallRef.current) return; // already on a call — server also sends the caller `call-busy`
+        if (incomingCallRef.current?.conversationId === msg.conversationId) return; // dedup: socket reconnect replay
         const caller = await lookupUser(msg.from);
         setIncomingCall({ conversationId: msg.conversationId, mode: msg.mode, caller });
+        if (AppState.currentState !== 'active') {
+          try {
+            const id = await Notifications.scheduleNotificationAsync({
+              content: {
+                title: `Incoming ${msg.mode === 'video' ? 'video' : 'voice'} call`,
+                body: caller.name,
+                sound: 'default',
+                data: { conversationId: msg.conversationId },
+              },
+              trigger: null,
+              android: { channelId: 'incoming-calls' },
+            });
+            incomingNotifIdRef.current = id;
+          } catch {}
+        }
         break;
       }
 
@@ -392,7 +429,7 @@ export function CallProvider({ myUser, children }) {
         break;
 
       case 'call-timeout':
-        if (incomingCallRef.current?.conversationId === msg.conversationId) setIncomingCall(null);
+        if (incomingCallRef.current?.conversationId === msg.conversationId) { setIncomingCall(null); dismissIncomingNotification(); }
         if (activeCallRef.current?.conversationId === msg.conversationId) endCall('timeout');
         break;
 
@@ -465,12 +502,16 @@ export function CallProvider({ myUser, children }) {
         if (activeCallRef.current?.conversationId === msg.conversationId) {
           endCall(msg.reason || (msg.type === 'peer-left' ? 'network_lost' : 'hangup'));
         }
+        if (incomingCallRef.current?.conversationId === msg.conversationId) {
+          setIncomingCall(null);
+          dismissIncomingNotification();
+        }
         break;
 
       default:
         break;
     }
-  }, [lookupUser, ensurePeerConnection, send, endCall, setCallState, clearDialingTimeout]);
+  }, [lookupUser, ensurePeerConnection, send, endCall, setCallState, clearDialingTimeout, dismissIncomingNotification]);
 
   useEffect(() => {
     if (!myUser?.id) return;
