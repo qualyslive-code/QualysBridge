@@ -10,7 +10,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, PALETTE } from '../theme';
 import { PBtn } from '../components/atoms';
 import { supabase } from '../lib/supabase';
-import sodium from 'react-native-libsodium';
 import { ensureKeyPair } from '../lib/e2e';
 import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';

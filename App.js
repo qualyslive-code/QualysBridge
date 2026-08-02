@@ -1,7 +1,7 @@
 // QualysBridge — App.js (EAS-ready root)
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
 import { useFonts,
@@ -111,9 +111,16 @@ export default function App() {
 
       if (row) {
         // Returning user — profile already exists, skip straight to home.
-        retryEnsureKeyPair(session.user.id).catch((e) =>
-          console.error('[App] ensureKeyPair', e)
-        );
+        retryEnsureKeyPair(session.user.id)
+          .then((result) => {
+            if (result?.historyLost) {
+              Alert.alert(
+                'Encryption keys reset',
+                "Your device's secure keys were out of sync and have been regenerated. Older messages you sent from this device can no longer be decrypted here."
+              );
+            }
+          })
+          .catch((e) => console.error('[App] ensureKeyPair', e));
         registerPushToken(session.user.id).catch((e) =>
           console.error('[App] registerPushToken', e)
         );

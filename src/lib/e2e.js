@@ -55,27 +55,50 @@ export async function ensureKeyPair(userId) {
     const existing = await SecureStore.getItemAsync(`e2e_privkey_${userId}`);
 
     if (existing) {
-      const { data } = await supabase
+      const { data, error: fetchError } = await supabase
         .from('app_user')
         .select('public_key')
         .eq('id', userId)
         .single();
-
-      if (data?.public_key) return;
+      if (fetchError) throw fetchError;
 
       const privateKey = sodium.from_base64(existing);
-      const publicKey = sodium.crypto_scalarmult_base(privateKey);
-      const pubB64 = sodium.to_base64(publicKey);
+      const derivedPub = sodium.to_base64(sodium.crypto_scalarmult_base(privateKey));
 
-      const { error } = await supabase
+      if (!data?.public_key) {
+        const { error } = await supabase
+          .from('app_user')
+          .update({
+            public_key: derivedPub,
+            key_generated_at: new Date().toISOString()
+          })
+          .eq('id', userId);
+        if (error) throw error;
+        return { historyLost: false };
+      }
+
+      if (data.public_key === derivedPub) {
+        return { historyLost: false };
+      }
+
+      console.warn('[E2E] Key mismatch detected for user', userId, '\u2014 regenerating keypair. Prior message history will be undecryptable.');
+
+      const { publicKey: newPub, privateKey: newPriv } = sodium.crypto_box_keypair();
+      const newPubB64 = sodium.to_base64(newPub);
+      const newPrivB64 = sodium.to_base64(newPriv);
+
+      await SecureStore.setItemAsync(`e2e_privkey_${userId}`, newPrivB64);
+
+      const { error: updateError } = await supabase
         .from('app_user')
         .update({
-        public_key: pubB64,
-        key_generated_at: new Date().toISOString()
-      })
+          public_key: newPubB64,
+          key_generated_at: new Date().toISOString()
+        })
         .eq('id', userId);
-      if (error) throw error;
-      return;
+      if (updateError) throw updateError;
+
+      return { historyLost: true };
     }
 
     const { publicKey, privateKey } = sodium.crypto_box_keypair();
@@ -92,6 +115,8 @@ export async function ensureKeyPair(userId) {
       })
       .eq('id', userId);
     if (error) throw error;
+
+    return { historyLost: false };
   })();
 
   try {
@@ -102,29 +127,12 @@ export async function ensureKeyPair(userId) {
 }
 
 
-export async function verifyKeyIntegrity(userId) {
-  const local = await SecureStore.getItemAsync(`e2e_privkey_${userId}`);
-  if (!local) return false;
-
-  const { data, error } = await supabase
-    .from('app_user')
-    .select('public_key')
-    .eq('id', userId)
-    .single();
-
-  if (error) {
-    console.warn('[E2E] verifyKeyIntegrity lookup failed:', error.message);
-    return false;
-  }
-  return !!data?.public_key;
-}
-
 export async function retryEnsureKeyPair(userId, retries = 3) {
   let lastErr;
   for (let i = 0; i < retries; i++) {
     try {
-      await ensureKeyPair(userId);
-      return;
+      const result = await ensureKeyPair(userId);
+      return result;
     } catch (e) {
       lastErr = e;
       console.warn(`[E2E] ensureKeyPair attempt ${i + 1}/${retries} failed:`, e?.message || e);
