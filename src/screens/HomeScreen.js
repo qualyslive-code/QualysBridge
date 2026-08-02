@@ -135,10 +135,6 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
     onOpenChat(c);
   };
 
-  const copyQid = async () => {
-    await Clipboard.setStringAsync(user.qid);
-  };
-
   const renderRow = ({ item, index }) => {
     if (item.type === 'header') {
       return (
@@ -217,29 +213,6 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
               <Text style={hs.addBtnText}>＋ Add</Text>
             </LinearGradient>
           </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* QID compact card */}
-      <View style={hs.qidCard}>
-        <LinearGradient
-          colors={[C.accent, C.accentL]}
-          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-          style={hs.qidCardHeader}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Av name={user.displayName} color="rgba(255,255,255,0.3)" avatarUrl={user.avatarUrl} size={34} />
-            <View>
-              <Text style={hs.qidSub}>QUALYS ID</Text>
-              <Text style={hs.qidName}>{user.displayName}</Text>
-            </View>
-          </View>
-          <TouchableOpacity onPress={copyQid} style={hs.copyQidBtn} activeOpacity={0.8}>
-            <Text style={hs.copyQidText}>Copy QID</Text>
-          </TouchableOpacity>
-        </LinearGradient>
-        <View style={hs.qidBody}>
-          <Text style={hs.qidValue}>{user.qid}</Text>
         </View>
       </View>
 

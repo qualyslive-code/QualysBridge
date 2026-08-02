@@ -152,9 +152,9 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   logoQ:    { fontSize: 32, color: '#fff', fontWeight: '900' },
-  appName:  { fontSize: 34, letterSpacing: -1, lineHeight: 40 },
-  appNameQualys: { fontFamily: 'Syne_800ExtraBold', color: C.text },
-  appNameBridge: { fontFamily: 'Syne_800ExtraBold', color: C.accentL },
+  appName:  { fontSize: 26, letterSpacing: -0.5, lineHeight: 32, textAlign: 'center' },
+  appNameQualys: { fontFamily: 'Outfit_800ExtraBold', color: C.text },
+  appNameBridge: { fontFamily: 'Outfit_800ExtraBold', color: C.accentL },
   tagline:  { fontSize: 15, color: C.sub, lineHeight: 26, textAlign: 'center', marginTop: 10 },
 
   featureList: { gap: 12, marginTop: 32 },

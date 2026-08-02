@@ -11,6 +11,9 @@ import { useFonts as useInterFonts,
   Inter_400Regular, Inter_500Medium,
   Inter_600SemiBold, Inter_700Bold,
 } from '@expo-google-fonts/inter';
+import { useFonts as useOutfitFonts,
+  Outfit_800ExtraBold,
+} from '@expo-google-fonts/outfit';
 import * as SplashScreen from 'expo-splash-screen';
 import { C } from './src/theme';
 import { supabase } from './src/lib/supabase';
@@ -67,6 +70,7 @@ export default function App() {
   const [interLoaded] = useInterFonts({
     Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
   });
+  const [outfitLoaded] = useOutfitFonts({ Outfit_800ExtraBold });
 
   useEffect(() => {
     if (step === 'home') {
@@ -77,8 +81,8 @@ export default function App() {
   }, [step]);
 
   const onLayoutRoot = useCallback(async () => {
-    if (fontsLoaded && interLoaded) await SplashScreen.hideAsync();
-  }, [fontsLoaded, interLoaded]);
+    if (fontsLoaded && interLoaded && outfitLoaded) await SplashScreen.hideAsync();
+  }, [fontsLoaded, interLoaded, outfitLoaded]);
 
   // ── Resolve auth state on mount, and stay in sync with it ──────────────────
   // Covers three real cases the mock App.js never had to handle:
@@ -165,7 +169,7 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  if (!fontsLoaded || !interLoaded || step === 'checking') return null;
+  if (!fontsLoaded || !interLoaded || !outfitLoaded || step === 'checking') return null;
 
   // Single render path now, so CallProvider + the two call overlays only
   // ever mount once per app session regardless of which screen (settings,

@@ -90,7 +90,7 @@ const s = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 0 },
   },
-  title: { fontSize: 32, fontFamily: 'Syne_800ExtraBold' },
+  title: { fontSize: 32, fontFamily: 'Outfit_800ExtraBold' },
   qualys: { color: C.text },
   bridge: { color: C.accentL },
   tagline: {
