@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, Animated, ScrollView,
+  View, Text, StyleSheet, Animated, ScrollView, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -90,13 +90,7 @@ export default function LoginScreen() {
       >
         {/* Logo */}
         <View style={styles.logoSection}>
-          <LinearGradient
-            colors={[C.accent, C.accentL]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={styles.logoMark}
-          >
-            <Text style={styles.logoQ}>Q</Text>
-          </LinearGradient>
+          <Image source={require('../../assets/icon.png')} style={styles.logoMark} resizeMode="cover" />
           <Text style={styles.appName}>
             <Text style={styles.appNameQualys}>Qualys</Text>
             <Text style={styles.appNameBridge}>Bridge</Text>

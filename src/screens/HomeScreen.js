@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput,
-  TouchableOpacity,
+  TouchableOpacity, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FlashList } from '@shopify/flash-list';
@@ -199,9 +199,7 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
           standalone row below the app bar. */}
       <View style={hs.appBar}>
         <View style={hs.appBarLeft}>
-          <LinearGradient colors={[C.accent, C.accentL]} style={hs.logoMark}>
-            <Text style={hs.logoQ}>Q</Text>
-          </LinearGradient>
+          <Image source={require('../../assets/icon.png')} style={hs.logoMark} resizeMode="cover" />
           <Text style={hs.appTitle} numberOfLines={1}>QualysBridge</Text>
           {totalUnread > 0 && (
             <View style={hs.unreadBadge}>

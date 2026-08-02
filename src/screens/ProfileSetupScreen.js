@@ -242,9 +242,7 @@ export function QIDRevealScreen({ user, onEnter }) {
           style={styles.qidCardHeader}
         >
           <View style={styles.qidCardLeft}>
-            <View style={styles.qidLogoMark}>
-              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '800' }}>Q</Text>
-            </View>
+            <Image source={require('../../assets/icon.png')} style={styles.qidLogoMark} resizeMode="cover" />
             <View>
               <Text style={styles.qidHeaderSub}>QUALYS ID</Text>
               <Text style={styles.qidHeaderName}>{user.displayName}</Text>

@@ -1,6 +1,6 @@
 // QualysBridge — Brand splash shown briefly right before Home mounts
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Animated, Easing, Image } from 'react-native';
 import { C } from '../theme';
 
 export default function BrandSplashScreen() {
@@ -8,6 +8,7 @@ export default function BrandSplashScreen() {
   const scale = useRef(new Animated.Value(0.92)).current;
   const taglineOpacity = useRef(new Animated.Value(0)).current;
   const glow = useRef(new Animated.Value(0)).current;
+  const rotate = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -34,6 +35,15 @@ export default function BrandSplashScreen() {
     }).start();
 
     Animated.loop(
+      Animated.timing(rotate, {
+        toValue: 1,
+        duration: 1800,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
+
+    Animated.loop(
       Animated.sequence([
         Animated.timing(glow, {
           toValue: 1,
@@ -52,11 +62,16 @@ export default function BrandSplashScreen() {
   }, []);
 
   const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.85] });
+  const rotateDeg = rotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
   return (
     <View style={s.wrap}>
       <Animated.View style={{ opacity, transform: [{ scale }] }}>
         <View style={s.center}>
+          <Animated.Image
+            source={require('../../assets/icon.png')}
+            style={[s.logo, { transform: [{ rotate: rotateDeg }] }]}
+          />
           <Animated.View style={[s.dot, { opacity: glowOpacity }]} />
           <Text style={s.title}>
             <Text style={s.qualys}>Qualys</Text>
@@ -79,6 +94,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   center: { alignItems: 'center' },
+  logo: { width: 100, height: 100, marginBottom: 18, resizeMode: 'contain' },
   dot: {
     width: 8,
     height: 8,

@@ -75,7 +75,7 @@ export default function App() {
   useEffect(() => {
     if (step === 'home') {
       setShowBrandSplash(true);
-      const t = setTimeout(() => setShowBrandSplash(false), 1400);
+      const t = setTimeout(() => setShowBrandSplash(false), 2600);
       return () => clearTimeout(t);
     }
   }, [step]);

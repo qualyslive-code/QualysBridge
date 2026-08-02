@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput,
-  TouchableOpacity, KeyboardAvoidingView, Platform, Animated,
+  TouchableOpacity, KeyboardAvoidingView, Platform, Animated, Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
@@ -163,6 +163,16 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   // this is confirmed and a permanent fix is in.
   const SHOW_INSET_DEBUG = true;
   const topPad = Math.min(insets.top, 48);
+  // DEBUG: insets.top came back as a normal 32 — not the cause. Measuring
+  // actual on-screen y/height of each section directly instead of guessing
+  // further, so the next report tells us exactly where the extra space
+  // lives instead of us hypothesizing again.
+  const [dbg, setDbg] = useState({});
+  const screenH = Dimensions.get('window').height;
+  const mkOnLayout = (label) => (e) => {
+    const { y, height } = e.nativeEvent.layout;
+    setDbg((prev) => ({ ...prev, [label]: `y${Math.round(y)}/h${Math.round(height)}` }));
+  };
 
   const walled   = !theyReplied && sentCount >= 3;
   const wallLeft = 3 - sentCount;
@@ -607,14 +617,16 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   };
 
   return (
-    <View style={[cs.container, { paddingTop: topPad }]}>
+    <View style={[cs.container, { paddingTop: topPad }]} onLayout={mkOnLayout('container')}>
       {SHOW_INSET_DEBUG && (
         <View style={cs.debugBadge} pointerEvents="none">
-          <Text style={cs.debugBadgeText}>insets.top={insets.top} (raw)</Text>
+          <Text style={cs.debugBadgeText}>
+            top={insets.top} scr={Math.round(screenH)} cont={dbg.container} hdr={dbg.header} e2e={dbg.e2e} kav={dbg.kav} list={dbg.list}
+          </Text>
         </View>
       )}
       {/* Header */}
-      <View style={cs.header}>
+      <View style={cs.header} onLayout={mkOnLayout('header')}>
         <IBtn icon="‹" onPress={onBack} />
         <Av name={contact.name} color={contact.color} avatarUrl={contact.avatarUrl} size={52} online={online.on} />
         <View style={{ flex: 1, overflow: 'hidden' }}>
@@ -640,7 +652,9 @@ export default function ChatScreen({ contact, myUser, onBack }) {
         </View>
       </View>
 
-      <E2EBar />
+      <View onLayout={mkOnLayout('e2e')}>
+        <E2EBar />
+      </View>
 
       {!theyReplied && sentCount > 0 && (
         <WallNotice left={wallLeft} walled={walled} name={contact.name} />
@@ -651,9 +665,11 @@ export default function ChatScreen({ contact, myUser, onBack }) {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : insets.top + 64}
+        onLayout={mkOnLayout('kav')}
       >
         <FlatList
           ref={flatRef}
+          onLayout={mkOnLayout('list')}
           data={[...msgs, ...(typing ? [{ id: '__typing', type: '__typing' }] : [])]}
           keyExtractor={(m) => m.id}
           keyboardShouldPersistTaps="handled"
@@ -798,9 +814,10 @@ const cs = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   debugBadge: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 9999,
-    backgroundColor: '#ff0040', paddingVertical: 3, alignItems: 'center',
+    backgroundColor: '#ff0040', paddingVertical: 4, paddingHorizontal: 4,
+    alignItems: 'center',
   },
-  debugBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  debugBadgeText: { color: '#fff', fontSize: 8, fontWeight: '700', textAlign: 'center' },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 14,
