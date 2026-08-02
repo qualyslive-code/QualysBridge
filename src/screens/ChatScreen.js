@@ -18,6 +18,7 @@ import { ReportModal, SendMoneyScreen } from './ModalsAndOverlays';
 import { supabase } from '../lib/supabase';
 import { File } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { encryptMessage, decryptMessage, isEncryptedPayload } from '../lib/e2e';
 import { createPaypalOrder, capturePaypalOrder, getMediaUploadUrl } from '../lib/api';
 import * as ImagePicker from 'expo-image-picker';
@@ -39,6 +40,22 @@ const DEMO_VIDEOS = [
   { vidEmoji: '🎵', vidGradient: ['#1a0533', '#3d0b69'], duration: '0:12' },
   { vidEmoji: '🏖️', vidGradient: ['#1a3a4e', '#0d6e8a'], duration: '0:08' },
 ];
+
+// Generates a local JPEG thumbnail from a video file URI using
+// expo-video-thumbnails. Returns null (never throws) on failure so callers
+// can fall back to the gradient placeholder instead of blocking the send.
+async function generateVideoThumbnail(videoUri) {
+  try {
+    const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, {
+      time: 1500, // 1.5s into the clip — skips black/blank opening frames
+      quality: 0.7,
+    });
+    return uri;
+  } catch (err) {
+    console.warn('[ChatScreen] thumbnail generation failed:', err);
+    return null;
+  }
+}
 
 // ── VOICE RECORDER BAR ────────────────────────────────────────────────────────
 function VoiceRecorder({ onSend, onCancel }) {
@@ -136,6 +153,16 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   const [decrypted, setDecrypted] = useState({});
   const flatRef = useRef(null);
   const insets  = useSafeAreaInsets();
+  // DEBUG: react-native-safe-area-context has been reported to return an
+  // inflated `top` inset on some Android edge-to-edge configs/OEM skins,
+  // which would produce exactly the large blank gap seen above the header.
+  // Clamp to a sane max so the UI stays usable either way, and surface the
+  // raw value on-screen (not gated behind __DEV__, since this is a
+  // production APK build) so we can see the actual number without a
+  // second rebuild. Remove SHOW_INSET_DEBUG + the debug badge below once
+  // this is confirmed and a permanent fix is in.
+  const SHOW_INSET_DEBUG = true;
+  const topPad = Math.min(insets.top, 48);
 
   const walled   = !theyReplied && sentCount >= 3;
   const wallLeft = 3 - sentCount;
@@ -330,6 +357,27 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     // rendered in the input bar area below (same as the text-send error).
   };
 
+  // Shared helper: uploads a local file URI to the given signed Storage
+  // path/token via expo-file-system's File.upload() (BINARY_CONTENT mode).
+  // Used for both the main media file and (for videos) the generated
+  // thumbnail JPEG, since both go through the same signed-upload flow.
+  const uploadFileToPath = async (fileUri, path, token, contentType) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+    const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/upload/sign/qualys-family-media/${path}?token=${token}`;
+    const file = new File(fileUri);
+    return file.upload(uploadUrl, {
+      httpMethod: 'PUT',
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${session?.access_token || anonKey}`,
+        'content-type': contentType,
+        'cache-control': 'max-age=3600',
+        'x-upsert': 'false',
+      },
+    });
+  };
+
   // Real picker + upload: asks the bridge for a signed Storage URL, PUTs
   // the file straight to Supabase Storage via uploadToSignedUrl, then
   // passes the returned `path` through to send_message as
@@ -360,22 +408,9 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       mp4: 'video/mp4', mov: 'video/quicktime', m4a: 'audio/m4a',
     };
     const contentType = CONTENT_TYPES[fileExt] || 'application/octet-stream';
-    const { data: { session } } = await supabase.auth.getSession();
-    const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-    const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/upload/sign/qualys-family-media/${path}?token=${token}`;
     let uploadResult;
     try {
-      const file = new File(asset.uri);
-      uploadResult = await file.upload(uploadUrl, {
-        httpMethod: 'PUT',
-        headers: {
-          apikey: anonKey,
-          Authorization: `Bearer ${session?.access_token || anonKey}`,
-          'content-type': contentType,
-          'cache-control': 'max-age=3600',
-          'x-upsert': 'false',
-        },
-      });
+      uploadResult = await uploadFileToPath(asset.uri, path, token, contentType);
     } catch (err) {
       setSendError(err.message || 'Upload failed');
       return;
@@ -383,6 +418,29 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     if (!uploadResult || uploadResult.status < 200 || uploadResult.status >= 300) {
       setSendError('Upload failed');
       return;
+    }
+
+    // For videos: generate a local thumbnail and upload it too, best-effort.
+    // Failure here never blocks the send — VideoBubble already falls back
+    // to the gradient placeholder when video_thumb_url is null.
+    let thumbPath = null;
+    if (type === 'video') {
+      const thumbUri = await generateVideoThumbnail(asset.uri);
+      if (thumbUri) {
+        const thumbRes = await getMediaUploadUrl({ conversationId, fileExt: 'jpg' });
+        if (thumbRes.ok) {
+          try {
+            const thumbUpload = await uploadFileToPath(
+              thumbUri, thumbRes.data.path, thumbRes.data.token, 'image/jpeg'
+            );
+            if (thumbUpload && thumbUpload.status >= 200 && thumbUpload.status < 300) {
+              thumbPath = thumbRes.data.path;
+            }
+          } catch (err) {
+            console.warn('[ChatScreen] thumbnail upload failed:', err);
+          }
+        }
+      }
     }
 
     const trimmedCaption = caption?.trim();
@@ -406,6 +464,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
         p_type: 'video', p_body: bodyToSend,
         p_video_asset_url: path,
         p_video_duration_label: `0:${String(durSec).padStart(2, '0')}`,
+        p_video_thumb_url: thumbPath,
       });
     }
   };
@@ -548,7 +607,12 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   };
 
   return (
-    <View style={[cs.container, { paddingTop: insets.top }]}>
+    <View style={[cs.container, { paddingTop: topPad }]}>
+      {SHOW_INSET_DEBUG && (
+        <View style={cs.debugBadge} pointerEvents="none">
+          <Text style={cs.debugBadgeText}>insets.top={insets.top} (raw)</Text>
+        </View>
+      )}
       {/* Header */}
       <View style={cs.header}>
         <IBtn icon="‹" onPress={onBack} />
@@ -732,6 +796,11 @@ export default function ChatScreen({ contact, myUser, onBack }) {
 
 const cs = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
+  debugBadge: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 9999,
+    backgroundColor: '#ff0040', paddingVertical: 3, alignItems: 'center',
+  },
+  debugBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 14,

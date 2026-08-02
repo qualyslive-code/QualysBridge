@@ -10,7 +10,7 @@ import { FlashList } from '@shopify/flash-list';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, F } from '../theme';
-import { Av, Tag, IBtn, Hr } from '../components/atoms';
+import { Av, Tag, Hr } from '../components/atoms';
 import { AddContactModal } from './ModalsAndOverlays';
 import { supabase } from '../lib/supabase';
 import { ago } from '../utils';
@@ -192,13 +192,17 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
 
   return (
     <View style={[hs.container, { paddingTop: insets.top }]}>
-      {/* App bar */}
+      {/* App bar — all four actions (Notebook, Group call, Settings, Add)
+          now share one uniform icon-button style (hs.iconBtn) so none of
+          them reads as "more important" than the others via size or a
+          highlighted background. Notebook moved up here from its old
+          standalone row below the app bar. */}
       <View style={hs.appBar}>
         <View style={hs.appBarLeft}>
           <LinearGradient colors={[C.accent, C.accentL]} style={hs.logoMark}>
             <Text style={hs.logoQ}>Q</Text>
           </LinearGradient>
-          <Text style={hs.appTitle}>Qualys</Text>
+          <Text style={hs.appTitle} numberOfLines={1}>QualysBridge</Text>
           {totalUnread > 0 && (
             <View style={hs.unreadBadge}>
               <Text style={hs.unreadText}>{totalUnread}</Text>
@@ -206,24 +210,24 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
           )}
         </View>
         <View style={hs.appBarRight}>
-          <IBtn icon="🎥" onPress={() => { setGroupSelected([]); setShowGroupPicker(true); }} />
-          <IBtn icon="⚙️" onPress={onOpenSettings} />
-          <TouchableOpacity onPress={() => setShowAdd(true)} style={hs.addBtn} activeOpacity={0.85}>
-            <LinearGradient colors={[C.accent, C.accentL]} style={hs.addBtnInner}>
-              <Text style={hs.addBtnText}>＋ Add</Text>
-            </LinearGradient>
+          <TouchableOpacity onPress={onOpenSelfNotes} style={hs.iconBtn} activeOpacity={0.8}>
+            <Text style={hs.iconBtnText}>📒</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => { setGroupSelected([]); setShowGroupPicker(true); }}
+            style={hs.iconBtn}
+            activeOpacity={0.8}
+          >
+            <Text style={hs.iconBtnText}>🎥</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onOpenSettings} style={hs.iconBtn} activeOpacity={0.8}>
+            <Text style={hs.iconBtnText}>⚙️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowAdd(true)} style={hs.iconBtn} activeOpacity={0.8}>
+            <Text style={hs.iconBtnText}>＋</Text>
           </TouchableOpacity>
         </View>
       </View>
-
-      {/* Notes to Self */}
-      <TouchableOpacity onPress={onOpenSelfNotes} style={hs.selfNotesRow} activeOpacity={0.7}>
-        <Av name={user.displayName} color={user.color} avatarUrl={user.avatarUrl} size={40} />
-        <View style={{ flex: 1 }}>
-          <Text style={hs.selfNotesTitle}>Notes to Self</Text>
-          <Text style={hs.selfNotesSub}>Private — only visible to you</Text>
-        </View>
-      </TouchableOpacity>
 
       {/* Search */}
       <View style={hs.searchWrap}>
@@ -351,19 +355,27 @@ const hs = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12,
   },
-  appBarLeft:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  appBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logoMark: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  appBarLeft:  { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, overflow: 'hidden' },
+  appBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  logoMark: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   logoQ:    { fontSize: 16, fontWeight: '800', color: '#fff' },
-  appTitle: { fontSize: 22, fontWeight: '800', color: C.text, letterSpacing: -0.5 },
+  appTitle: { fontSize: 19, fontWeight: '800', color: C.text, letterSpacing: -0.3, flexShrink: 1 },
   unreadBadge: {
     backgroundColor: C.accent, borderRadius: 9,
-    paddingHorizontal: 9, paddingVertical: 2,
+    paddingHorizontal: 9, paddingVertical: 2, flexShrink: 0,
   },
   unreadText: { fontSize: 11, fontWeight: '700', color: '#fff' },
-  addBtn:      { overflow: 'hidden', borderRadius: 19 },
-  addBtnInner: { height: 38, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
-  addBtnText:  { color: '#fff', fontSize: 13, fontWeight: '700' },
+
+  // Uniform icon-button style shared by Notebook, Group call, Settings, and
+  // Add — same size, same background/border, same icon size. Nothing is
+  // gradient-filled or larger than the rest, so no single action reads as
+  // "primary" by default.
+  iconBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: C.s2, borderWidth: 1, borderColor: C.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconBtnText: { fontSize: 16, color: C.text },
 
   qidCard: {
     marginHorizontal: 16, borderRadius: 20, overflow: 'hidden',
@@ -381,16 +393,9 @@ const hs = StyleSheet.create({
   qidBody:   { padding: 12, paddingHorizontal: 16 },
   qidValue:  { fontSize: 15, fontWeight: '600', color: C.text, letterSpacing: 2 },
 
-  selfNotesRow: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    marginHorizontal: 16, marginBottom: 14, padding: 12, paddingHorizontal: 14,
-    backgroundColor: C.s1, borderRadius: 16, borderWidth: 1, borderColor: C.borderM,
-  },
-  selfNotesTitle: { fontSize: 14, fontWeight: "600", color: C.text },
-  selfNotesSub: { fontSize: 11, color: C.dim, marginTop: 1 },
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: 14, marginBottom: 10,
+    marginHorizontal: 14, marginTop: 4, marginBottom: 10,
     padding: 10, paddingHorizontal: 14,
     backgroundColor: C.s2, borderRadius: 20, borderWidth: 1, borderColor: C.border,
   },
