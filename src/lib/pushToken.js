@@ -5,6 +5,7 @@
 // handler's push fallback).
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { supabase } from './supabase';
 
 export async function registerPushToken(userId) {
@@ -18,9 +19,19 @@ export async function registerPushToken(userId) {
   }
   if (finalStatus !== 'granted') return; // user declined — silent no-op
 
+  // On a standalone/EAS build (as opposed to Expo Go), getExpoPushTokenAsync
+  // needs an explicit projectId — it can't be inferred at runtime the way
+  // Expo Go infers it. Without this, the call throws and pushToken silently
+  // stays null forever (caught below, logged, never surfaced to the user).
+  const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+  if (!projectId) {
+    console.error('[pushToken] no EAS projectId available — cannot request a push token');
+    return;
+  }
+
   let token;
   try {
-    const result = await Notifications.getExpoPushTokenAsync();
+    const result = await Notifications.getExpoPushTokenAsync({ projectId });
     token = result.data;
   } catch (err) {
     console.error('[pushToken] getExpoPushTokenAsync failed', err);
