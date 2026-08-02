@@ -6,9 +6,10 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { FlashList } from '@shopify/flash-list';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { C } from '../theme';
+import { C, F } from '../theme';
 import { Av, Tag, IBtn, Hr } from '../components/atoms';
 import { AddContactModal } from './ModalsAndOverlays';
 import { supabase } from '../lib/supabase';
@@ -105,6 +106,30 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
 
   const onlineCount = Object.values(onlines).filter((o) => o.on).length;
 
+  // Splits the flat contact list into a header/row sequence for FlatList
+  // (pending requests surfaced above active chats) instead of one
+  // undifferentiated list \u2014 mirrors what c.trust already encodes, no new
+  // data. Only groups when not searching; a search result set stays a
+  // single flat "RESULTS" list.
+  const listData = React.useMemo(() => {
+    if (search) {
+      return [
+        { type: 'header', key: 'h-results', label: `RESULTS \u00b7 ${filtered.length}` },
+        ...filtered.map((c) => ({ type: 'contact', key: c.id, contact: c })),
+      ];
+    }
+    const pending = filtered.filter((c) => c.trust === 'pending');
+    const active  = filtered.filter((c) => c.trust !== 'pending');
+    const out = [];
+    if (pending.length > 0) {
+      out.push({ type: 'header', key: 'h-pending', label: `PENDING REQUESTS \u00b7 ${pending.length}`, tone: 'warn' });
+      pending.forEach((c) => out.push({ type: 'contact', key: c.id, contact: c }));
+    }
+    out.push({ type: 'header', key: 'h-active', label: 'CONVERSATIONS' });
+    active.forEach((c) => out.push({ type: 'contact', key: c.id, contact: c }));
+    return out;
+  }, [filtered, search]);
+
   const open = (c) => {
     setContacts((p) => p.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)));
     onOpenChat(c);
@@ -114,7 +139,17 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
     await Clipboard.setStringAsync(user.qid);
   };
 
-  const renderItem = ({ item: c, index }) => {
+  const renderRow = ({ item, index }) => {
+    if (item.type === 'header') {
+      return (
+        <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.5, color: item.tone === 'warn' ? C.warn : C.dim }}>
+            {item.label}
+          </Text>
+        </View>
+      );
+    }
+    const c = item.contact;
     const on    = onlines[c.id];
     const walled = c.walled;
     const trust  = c.trust;
@@ -154,7 +189,7 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
             </View>
           </View>
         </TouchableOpacity>
-        {index < filtered.length - 1 && <Hr indent={81} />}
+        {listData[index + 1]?.type === 'contact' && <Hr indent={81} />}
       </View>
     );
   };
@@ -240,12 +275,14 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
       </View>
 
       {/* Contacts list */}
-      <FlatList
-        data={filtered}
-        keyExtractor={(c) => c.id}
-        renderItem={renderItem}
+      <FlashList
+        data={listData}
+        keyExtractor={(item) => item.key}
+        renderItem={renderRow}
+        getItemType={(item) => item.type}
+        estimatedItemSize={72}
         style={{ flex: 1 }}
-        contentContainerStyle={filtered.length === 0 ? hs.emptyWrap : undefined}
+        contentContainerStyle={listData.length === 0 ? hs.emptyWrap : undefined}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={{ alignItems: 'center', padding: 52 }}>

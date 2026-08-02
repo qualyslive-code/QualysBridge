@@ -127,7 +127,7 @@ export const ImageBubble = ({ msg, fromMe, onExpand, caption }) => {
   return (
     <TouchableOpacity
       onPress={() => onExpand(msg)}
-      style={[fromMe ? styles.bubbleFromMe : styles.bubbleFromThem, { overflow: 'hidden', maxWidth: 220 }]}
+      style={[fromMe ? styles.bubbleFromMe : styles.bubbleFromThem, styles.mediaCard]}
       activeOpacity={0.9}
     >
       {url ? (
@@ -137,8 +137,9 @@ export const ImageBubble = ({ msg, fromMe, onExpand, caption }) => {
           <Text style={{ fontSize: 48 }}>{msg.imgEmoji ?? '🖼️'}</Text>
         </LinearGradient>
       )}
-      <View style={styles.mediaBadge}>
-        <Text style={styles.mediaBadgeText}>⤢ Tap</Text>
+      <View style={styles.mediaFooter}>
+        <Text style={styles.mediaFooterIcon}>🖼️</Text>
+        <Text style={styles.mediaFooterLabel}>Photo</Text>
       </View>
       {caption ? <Text style={styles.captionText}>{caption}</Text> : null}
     </TouchableOpacity>
@@ -164,7 +165,7 @@ export const VideoBubble = ({ msg, fromMe, onPlay, caption }) => {
   return (
     <TouchableOpacity
       onPress={() => onPlay(msg)}
-      style={[fromMe ? styles.bubbleFromMe : styles.bubbleFromThem, { overflow: 'hidden', maxWidth: 220 }]}
+      style={[fromMe ? styles.bubbleFromMe : styles.bubbleFromThem, styles.mediaCard]}
       activeOpacity={0.9}
     >
       {thumbUrl ? (
@@ -172,9 +173,6 @@ export const VideoBubble = ({ msg, fromMe, onPlay, caption }) => {
           <Image source={{ uri: thumbUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
           <View style={styles.playCircle}>
             <Text style={{ fontSize: 20, color: '#fff', paddingLeft: 3 }}>▶</Text>
-          </View>
-          <View style={styles.mediaBadge}>
-            <Text style={styles.mediaBadgeText}>{msg.video_duration_label ?? msg.duration ?? '0:15'}</Text>
           </View>
         </View>
       ) : (
@@ -186,11 +184,13 @@ export const VideoBubble = ({ msg, fromMe, onPlay, caption }) => {
           <View style={styles.playCircle}>
             <Text style={{ fontSize: 20, color: '#fff', paddingLeft: 3 }}>▶</Text>
           </View>
-          <View style={styles.mediaBadge}>
-            <Text style={styles.mediaBadgeText}>{msg.video_duration_label ?? msg.duration ?? '0:15'}</Text>
-          </View>
         </LinearGradient>
       )}
+      <View style={styles.mediaFooter}>
+        <Text style={styles.mediaFooterIcon}>▶</Text>
+        <Text style={styles.mediaFooterLabel}>Video</Text>
+        <Text style={styles.mediaFooterDur}>{msg.video_duration_label ?? msg.duration ?? '0:15'}</Text>
+      </View>
       {caption ? <Text style={styles.captionText}>{caption}</Text> : null}
     </TouchableOpacity>
   );
@@ -344,12 +344,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(94,79,232,0.88)',
     alignItems: 'center', justifyContent: 'center',
   },
+  mediaCard: { overflow: 'hidden', maxWidth: 240, backgroundColor: C.s2 },
   mediaBadge: {
     position: 'absolute', bottom: 8, right: 8,
     backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 8,
     paddingHorizontal: 8, paddingVertical: 3,
   },
   mediaBadgeText: { fontSize: 10, color: '#fff' },
+  mediaFooter: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: C.s3,
+  },
+  mediaFooterIcon:  { fontSize: 13, color: C.sub },
+  mediaFooterLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: C.text },
+  mediaFooterDur:   { fontSize: 11, color: C.dim, fontVariant: ['tabular-nums'] },
   captionText: { fontSize: 13, color: C.text, padding: 8, paddingTop: 6 },
 
   lightboxBg: {

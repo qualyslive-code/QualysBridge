@@ -97,7 +97,10 @@ export default function LoginScreen() {
           >
             <Text style={styles.logoQ}>Q</Text>
           </LinearGradient>
-          <Text style={styles.appName}>Qualys</Text>
+          <Text style={styles.appName}>
+            <Text style={styles.appNameQualys}>Qualys</Text>
+            <Text style={styles.appNameBridge}>Bridge</Text>
+          </Text>
           <Text style={styles.tagline}>Your identity.{'\n'}No phone number.</Text>
         </View>
 
@@ -149,7 +152,9 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   logoQ:    { fontSize: 32, color: '#fff', fontWeight: '900' },
-  appName:  { fontSize: 38, fontWeight: '800', color: C.text, letterSpacing: -1.5, lineHeight: 42 },
+  appName:  { fontSize: 34, letterSpacing: -1, lineHeight: 40 },
+  appNameQualys: { fontFamily: 'Syne_800ExtraBold', color: C.text },
+  appNameBridge: { fontFamily: 'Syne_800ExtraBold', color: C.accentL },
   tagline:  { fontSize: 15, color: C.sub, lineHeight: 26, textAlign: 'center', marginTop: 10 },
 
   featureList: { gap: 12, marginTop: 32 },

@@ -175,7 +175,7 @@ const s = StyleSheet.create({
   profileCard: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
     backgroundColor: C.s1, borderWidth: 1, borderColor: C.border,
-    borderRadius: 20, padding: 16, marginBottom: 12,
+    borderRadius: 16, padding: 16, marginBottom: 12,
   },
   profileName: { fontSize: 17, fontWeight: '700', color: C.text, marginBottom: 3 },
   profileQid:  { fontSize: 11, color: C.accentL, letterSpacing: 1 },
@@ -183,8 +183,8 @@ const s = StyleSheet.create({
 
   qidRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: C.s2, borderRadius: 14, borderWidth: 1, borderColor: C.border,
-    padding: 11, paddingHorizontal: 16, marginBottom: 20,
+    backgroundColor: C.s2, borderRadius: 16, borderWidth: 1, borderColor: C.border,
+    padding: 12, paddingHorizontal: 16, marginBottom: 20,
   },
   qidLabel: { fontSize: 9, color: C.dim, letterSpacing: 1.5 },
   qidValue: { flex: 1, fontSize: 13, fontWeight: '600', color: C.accentL, letterSpacing: 1.5 },

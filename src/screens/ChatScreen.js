@@ -552,7 +552,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       {/* Header */}
       <View style={cs.header}>
         <IBtn icon="‹" onPress={onBack} />
-        <Av name={contact.name} color={contact.color} avatarUrl={contact.avatarUrl} size={40} online={online.on} />
+        <Av name={contact.name} color={contact.color} avatarUrl={contact.avatarUrl} size={52} online={online.on} />
         <View style={{ flex: 1, overflow: 'hidden' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
             <Text style={cs.headerName} numberOfLines={1}>{contact.name}</Text>
@@ -733,14 +733,14 @@ export default function ChatScreen({ contact, myUser, onBack }) {
 const cs = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   header: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 14, paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingVertical: 14,
     borderBottomWidth: 1, borderBottomColor: C.border,
     backgroundColor: C.s1,
   },
-  headerName:    { fontSize: 15, fontWeight: '600', color: C.text, flex: 1 },
-  headerStatus:  { fontSize: 11, marginTop: 2 },
-  headerActions: { flexDirection: 'row', gap: 6 },
+  headerName:    { fontSize: 17, fontWeight: '700', color: C.text, flex: 1 },
+  headerStatus:  { fontSize: 12, marginTop: 3 },
+  headerActions: { flexDirection: 'row', gap: 8 },
   moneyBtn: {
     height: 34, paddingHorizontal: 12, borderRadius: 17,
     backgroundColor: C.moneyD, borderWidth: 1, borderColor: C.money + '28',
@@ -766,10 +766,10 @@ const ms = StyleSheet.create({
   msgRow:    { flexDirection: 'column', marginBottom: 10 },
   msgRowMe:  { alignItems: 'flex-end' },
   msgRowThem:{ alignItems: 'flex-start' },
-  bubble:    { maxWidth: '72%', padding: 10, paddingHorizontal: 14 },
+  bubble:    { maxWidth: '76%', padding: 12, paddingHorizontal: 16 },
   bubbleMe:  { borderRadius: 18, borderTopRightRadius: 4 },
   bubbleThem:{ borderRadius: 18, borderTopLeftRadius: 4, borderWidth: 1, borderColor: C.border },
-  bubbleText:{ fontSize: 14, lineHeight: 22 },
+  bubbleText:{ fontSize: 15, lineHeight: 22 },
   bubbleMeta:{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 5, marginTop: 5 },
   metaTime:  { fontSize: 9 },
   metaTick:  { fontSize: 9 },
@@ -799,8 +799,8 @@ const ds = StyleSheet.create({
 
 const ib = StyleSheet.create({
   bar: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 12, paddingTop: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 14, paddingTop: 12,
     backgroundColor: C.s1, borderTopWidth: 1, borderTopColor: C.border,
   },
   attachBtn: {
