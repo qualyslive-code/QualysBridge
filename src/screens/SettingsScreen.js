@@ -48,10 +48,10 @@ export default function SettingsScreen({ user, onBack, onLogout, onAvatarUpdated
         .from('qualys-family-media')
         .uploadToSignedUrl(path, token, fileBuffer, { contentType });
       if (uploadErr) return;
-      const { data: pub } = supabase.storage
-        .from('qualys-family-media')
-        .getPublicUrl(path);
-      const publicUrl = pub?.publicUrl;
+      // Bucket is private — store the bare storage path, not a public URL
+      // that will 400. Av resolves it to a short-lived signed URL via
+      // /media/download-url at render time.
+      const publicUrl = path;
       const { error: dbErr } = await supabase
         .from('app_user')
         .update({ avatar_url: publicUrl })

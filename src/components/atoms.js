@@ -11,10 +11,57 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { C, F } from '../theme';
+import { getMediaDownloadUrl } from '../lib/api';
 
 // ── AVATAR ────────────────────────────────────────────────────────────────────
+//
+// `avatarUrl` here is a bare storage PATH (e.g. 'avatars/<uid>/<file>.jpeg'),
+// not a fetchable URL — the media bucket is private, so every path needs a
+// short-lived signed URL from the backend to actually load. Resolved and
+// cached at module scope (shared across every Av instance, not per-component)
+// so a contact list showing the same avatar 20 times signs it once, and
+// concurrent renders of the same path in-flight share one request instead of
+// firing 20 simultaneously.
+const avatarUrlCache = new Map();    // path -> { url, expiresAt }
+const avatarUrlInflight = new Map(); // path -> Promise<string|null>
+
+async function resolveAvatarUrl(path) {
+  const cached = avatarUrlCache.get(path);
+  if (cached && cached.expiresAt > Date.now() + 5000) return cached.url;
+  if (avatarUrlInflight.has(path)) return avatarUrlInflight.get(path);
+
+  const promise = (async () => {
+    try {
+      const res = await getMediaDownloadUrl({ path });
+      if (!res.ok) return null;
+      const expiresAt = Date.now() + (res.data.expiresInSeconds ?? 3600) * 1000;
+      avatarUrlCache.set(path, { url: res.data.signedUrl, expiresAt });
+      return res.data.signedUrl;
+    } finally {
+      avatarUrlInflight.delete(path);
+    }
+  })();
+  avatarUrlInflight.set(path, promise);
+  return promise;
+}
+
 export const Av = ({ name, color, size = 44, online = false, style, avatarUrl }) => {
   const [imgFailed, setImgFailed] = useState(false);
+  const [resolvedUrl, setResolvedUrl] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setImgFailed(false);
+    if (!avatarUrl) { setResolvedUrl(null); return; }
+    // Legacy rows from before this fix may still hold a full public URL
+    // for a short window until the data migration runs — those are
+    // already broken (private bucket, 400s), so there's nothing useful to
+    // do with them here; only resolve real storage paths.
+    if (avatarUrl.startsWith('http')) { setResolvedUrl(null); return; }
+    resolveAvatarUrl(avatarUrl).then((url) => { if (!cancelled) setResolvedUrl(url); });
+    return () => { cancelled = true; };
+  }, [avatarUrl]);
+
   const initials = name
     .split(' ')
     .map((w) => w[0])
@@ -25,9 +72,9 @@ export const Av = ({ name, color, size = 44, online = false, style, avatarUrl })
 
   return (
     <View style={[{ position: 'relative', flexShrink: 0 }, style]}>
-      {avatarUrl && !imgFailed ? (
+      {resolvedUrl && !imgFailed ? (
         <Image
-          source={{ uri: avatarUrl }}
+          source={{ uri: resolvedUrl }}
           style={[styles.avBase, { width: size, height: size, borderRadius: size / 2 }]}
           contentFit="cover"
           onError={() => setImgFailed(true)}

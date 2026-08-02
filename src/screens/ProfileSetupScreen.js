@@ -85,10 +85,10 @@ export function ProfileSetupScreen({ gUser, onDone, onNeedLogin }) {
             .from('qualys-family-media')
             .uploadToSignedUrl(path, token, fileBuffer, { contentType });
           if (!uploadErr) {
-            const { data: pub } = supabase.storage
-              .from('qualys-family-media')
-              .getPublicUrl(path);
-            avatarUrl = pub?.publicUrl ?? null;
+            // Bucket is private — store the bare storage path, not a
+            // public URL that will 400. Av resolves it to a short-lived
+            // signed URL via /media/download-url at render time.
+            avatarUrl = path;
             await supabase.from('app_user').update({ avatar_url: avatarUrl }).eq('id', row.id);
           }
         }
