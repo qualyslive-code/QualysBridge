@@ -1,19 +1,4 @@
 // QualysBridge — ChatScreen
-// Ground-up rebuild (not a patch) — every RPC call, encryption call, upload
-// flow, money flow, and presence/wall/trust behavior below is identical to
-// the original file. What changed structurally:
-//   1. FlatList now has style={{ flex: 1 }} — the original only set
-//      contentContainerStyle, which is not enough for a FlatList to expand
-//      to fill its parent. Without it the list collapses toward its content
-//      size and everything below (destruct strip, input bar) gets pushed up
-//      under the header, leaving the rest of the screen bare background.
-//      That was the actual cause of the "squeezed" layout, present before
-//      any of these changes.
-//   2. Dead `co` (CallOverlay-shaped) styles at the bottom of the original
-//      file were never referenced anywhere in its JSX — removed as unused
-//      code, not a functional change.
-//   3. Day dividers + tighter same-sender grouping, kept from the last
-//      round — purely presentational, computed over the same `msgs` state.
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -21,11 +6,17 @@ import {
   TouchableOpacity, KeyboardAvoidingView, Platform, Animated,
   LayoutAnimation, UIManager,
 } from 'react-native';
+
+// One-time opt-in for Android's LayoutAnimation — iOS has it on by default.
+// Gives new/incoming messages a soft slide-in instead of popping in place.
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, DESTRUCT } from '../theme';
-import { Av, Tag, IBtn, E2EBar, Typing, WallNotice, TCard, Pulse } from '../components/atoms';
+import { Av, Tag, IBtn, E2EBar, Typing, WallNotice, TCard } from '../components/atoms';
 import { useCallContext } from '../lib/CallContext';
 import {
   VoiceNote, ImageBubble, VideoBubble, Lightbox, VideoPlayer,
@@ -40,11 +31,21 @@ import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { uid, ago } from '../utils';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
+// Currency symbol lookup — the real `message` table only stores
+// transfer_currency_code (e.g. "USD"), not a symbol. DB.js's mock objects
+// carried sym directly; that field never existed server-side, so it's
+// resolved client-side instead, same as CURRENCIES does elsewhere in the app.
 const CURRENCY_SYM = { USD: '$', KES: 'KSh', NGN: '₦', GBP: '£', EUR: '€' };
+
+const DEMO_IMAGES = [
+  { imgEmoji: '🌅', imgGradient: ['#1a1a4e', '#2d1b69'] },
+  { imgEmoji: '🏙️', imgGradient: ['#0f2027', '#203a43'] },
+  { imgEmoji: '🌿', imgGradient: ['#134e5e', '#71b280'] },
+];
+const DEMO_VIDEOS = [
+  { vidEmoji: '🎵', vidGradient: ['#1a0533', '#3d0b69'], duration: '0:12' },
+  { vidEmoji: '🏖️', vidGradient: ['#1a3a4e', '#0d6e8a'], duration: '0:08' },
+];
 
 // ── VOICE RECORDER BAR ────────────────────────────────────────────────────────
 function VoiceRecorder({ onSend, onCancel }) {
@@ -113,15 +114,17 @@ function AttachTray({ onImage, onVideo, onClose }) {
 }
 
 // ── CHAT SCREEN ───────────────────────────────────────────────────────────────
+// contact.id and myUser.id are now real auth.users UUIDs (Supabase), not the
+// old QID strings from KNOWN — see ProfileSetupScreen / LoginScreen for where
+// that identity now comes from.
 export default function ChatScreen({ contact, myUser, onBack }) {
-  const cid = contact.id;
+  const cid = contact.id; // the OTHER user's id; conversationId is resolved below, not the same thing
   const [conversationId, setConversationId] = useState(null);
   const { startOutgoingCall } = useCallContext();
   const [msgs,       setMsgs]       = useState([]);
   const [input,      setInput]      = useState('');
-  const [pendingAttachment, setPendingAttachment] = useState(null);
-  const [uploading,  setUploading]  = useState(false);
-  const [typing,     setTyping]     = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState(null); // { type: 'image'|'video', asset }
+  const [typing,     setTyping]     = useState(false); // no longer driven by simReply — left wired for a future real typing-indicator channel
   const [destruct,   setDestruct]   = useState('Off');
   const [blocked,    setBlocked]    = useState(false);
   const [showRep,    setShowRep]    = useState(false);
@@ -144,10 +147,46 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   const walled   = !theyReplied && sentCount >= 3;
   const wallLeft = 3 - sentCount;
 
+  // ── Presentational grouping: day dividers + "last in a run" flag ─────────
+  // Pure derived view over msgs — never touches the actual message data or
+  // any of the send/receive logic above. A run is consecutive messages from
+  // the same sender with no other sender's message between them; only the
+  // last message in a run gets its full meta row treated as "primary" so
+  // grouped bubbles can sit tighter without losing per-message timestamps.
+  const dayLabel = (ts) => {
+    const d = new Date(ts);
+    const today = new Date();
+    const yest = new Date(today); yest.setDate(yest.getDate() - 1);
+    if (d.toDateString() === today.toDateString()) return 'Today';
+    if (d.toDateString() === yest.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString('en', { month: 'short', day: 'numeric', year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+  };
+
+  const listData = useMemo(() => {
+    const out = [];
+    let lastDay = null;
+    msgs.forEach((m, i) => {
+      const ts = m.created_at ? new Date(m.created_at).getTime() : Date.now();
+      const day = new Date(ts).toDateString();
+      if (day !== lastDay) {
+        out.push({ id: `divider_${day}`, __divider: true, label: dayLabel(ts) });
+        lastDay = day;
+      }
+      const next = msgs[i + 1];
+      const isLastInGroup = !next || next.sender_id !== m.sender_id || new Date(next.created_at).toDateString() !== day;
+      out.push({ ...m, __isLastInGroup: isLastInGroup });
+    });
+    if (typing) out.push({ id: '__typing', type: '__typing' });
+    return out;
+  }, [msgs, typing]);
+
+  // ── Load conversation + initial state ─────────────────────────────────────
   useEffect(() => {
     let isMounted = true;
 
     async function load() {
+      // get_or_create_conversation handles the lo/hi ordering itself —
+      // the client never needs to know which of us is user_a vs user_b.
       const { data: convId, error: convErr } = await supabase.rpc(
         'get_or_create_conversation',
         { other_user_id: cid }
@@ -174,10 +213,15 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       setSentCount((messageRows ?? []).filter((m) => m.sender_id === myUser.id).length);
       setTheyReplied((messageRows ?? []).some((m) => m.sender_id === cid));
       setBlocked(!!blockRow);
+      // FIX: presenceRow.last_seen_at is an ISO string from Postgres —
+      // ago() does Date.now() - ts arithmetic, which silently produces NaN
+      // on a string. Convert once here instead of at every render site.
       setOnline({
         on: presenceRow?.is_online ?? false,
         last: presenceRow?.last_seen_at ? new Date(presenceRow.last_seen_at).getTime() : null,
       });
+      // contact_trust returns zero rows for an unsaved contact — that's 'new',
+      // not an error. mutual/pending come straight from the view's `status`.
       setTrust(trustRow?.status ?? 'new');
 
       const priv = await SecureStore.getItemAsync(`e2e_privkey_${myUser.id}`);
@@ -186,6 +230,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
         .from('app_user_public').select('public_key').eq('id', cid).maybeSingle();
       if (isMounted) setContactPublicKey(contactRow?.public_key ?? null);
 
+      // mark_conversation_read mirrors DB.markRead(cid) exactly
       await supabase.rpc('mark_conversation_read', { p_conversation_id: convId });
     }
 
@@ -193,6 +238,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     return () => { isMounted = false; };
   }, [cid, myUser.id]);
 
+  // ── Realtime: new messages, presence changes ──────────────────────────────
   useEffect(() => {
     if (!conversationId) return;
 
@@ -203,8 +249,10 @@ export default function ChatScreen({ contact, myUser, onBack }) {
         filter: `conversation_id=eq.${conversationId}`,
       }, ({ new: row }) => {
         setMsgs((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
+        if (row.sender_id === cid) setTheyReplied(true);
+        // a message arriving from them while this screen is open should be
+        // marked read immediately, same as the original markRead-on-open did
         if (row.sender_id === cid) {
-          setTheyReplied(true);
           supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId });
         }
       })
@@ -219,6 +267,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     return () => { supabase.removeChannel(channel); };
   }, [conversationId, cid]);
 
+  // ── Decrypt: lazily decrypt any encrypted messages once keys are available ─────
   useEffect(() => {
     if (!myPrivateKey || !contactPublicKey) return;
     const pending = msgs.filter(
@@ -235,6 +284,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     return () => { cancelled = true; };
   }, [msgs, myPrivateKey, contactPublicKey]);
 
+  // ── Presence heartbeat: tell the backend we're online while this screen is mounted ──
   useEffect(() => {
     supabase.rpc('set_presence', { p_is_online: true });
     return () => { supabase.rpc('set_presence', { p_is_online: false }); };
@@ -245,6 +295,14 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 60);
   }, [msgs, typing]);
 
+  // ── send_message wrapper ───────────────────────────────────────────────────
+  // send_message RAISES (doesn't return a status) when blocked or walled —
+  // that's a real behavior change from DB.push(), which silently no-op'd.
+  // sendText()'s own guard below still prevents the call in the common case;
+  // this catch covers the race where block/wall state changed since load.
+  // FIX: now returns { ok, error } instead of nothing — onMoneySent below
+  // needs this to know whether a transfer actually went through before
+  // telling SendMoneyScreen it can show "done".
   const sendMessage = useCallback(async (rpcArgs) => {
     if (!conversationId) return { ok: false, error: new Error('No conversation yet') };
     setSendError(null);
@@ -273,9 +331,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       const caption = input.trim();
       setPendingAttachment(null);
       setInput('');
-      setUploading(true);
       await uploadAndSend({ type, asset, caption });
-      setUploading(false);
       return;
     }
     const t = input.trim();
@@ -295,11 +351,15 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       p_body: bodyToSend,
       p_self_destruct_option: destruct !== 'Off' ? destruct : null,
     });
-    if (!result.ok) setInput(t);
+    if (!result.ok) {
+      // Restore the typed text so the user can try again without retyping.
+      setInput(t);
+    }
   };
 
   const sendVoice = async (data) => {
     setRecording(false);
+    // FIX: was fire-and-forget — errors were silently swallowed.
     await sendMessage({
       p_type: 'voice',
       p_body: '🎙️ Voice message',
@@ -307,8 +367,14 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       p_voice_waveform: data.waveform,
       p_self_destruct_option: destruct !== 'Off' ? destruct : null,
     });
+    // sendError state is set inside sendMessage on failure — it's now
+    // rendered in the input bar area below (same as the text-send error).
   };
 
+  // Real picker + upload: asks the bridge for a signed Storage URL, PUTs
+  // the file straight to Supabase Storage via uploadToSignedUrl, then
+  // passes the returned `path` through to send_message as
+  // p_image_asset_url / p_video_asset_url instead of null.
   const uploadAndSend = async ({ type, asset, caption }) => {
     const fileExt = (asset.uri.split('.').pop() || '').toLowerCase();
     const upRes = await getMediaUploadUrl({ conversationId, fileExt });
@@ -318,6 +384,17 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     }
     const { path, token } = upRes.data;
 
+    // Streamed straight from disk via expo-file-system's File.upload()
+    // (BINARY_CONTENT mode — raw bytes, not multipart) instead of reading
+    // the whole file into a JS ArrayBuffer first. The old fetch().arrayBuffer()
+    // approach loaded entire videos into memory before sending, which threw
+    // OutOfMemoryError on real videos (images were small enough to get away
+    // with it). This hits the same Supabase signed-upload endpoint
+    // storage-js's uploadToSignedUrl uses internally
+    // (PUT {SUPABASE_URL}/storage/v1/object/upload/sign/{bucket}/{path}?token=...),
+    // so it still needs the same headers storage-js would have set:
+    // apikey + Authorization (for the gateway) and content-type + cache-control
+    // (so the file doesn't land in storage as application/octet-stream).
     const CONTENT_TYPES = {
       jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
       webp: 'image/webp', heic: 'image/heic',
@@ -378,7 +455,9 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     setShowAttach(false);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { setSendError('Photo library permission denied'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'], quality: 0.8,
+    });
     if (result.canceled) return;
     setPendingAttachment({ type: 'image', asset: result.assets[0] });
   };
@@ -386,28 +465,44 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     setShowAttach(false);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { setSendError('Photo library permission denied'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], quality: 0.8 });
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'], quality: 0.8,
+    });
     if (result.canceled) return;
     setPendingAttachment({ type: 'video', asset: result.assets[0] });
   };
 
+  // FIX: was synchronous and assumed success — closed the overlay
+  // immediately regardless of whether sendMessage's RPC call actually
+  // succeeded. Now awaits the real result and only closes on confirmed
+  // success; SendMoneyScreen uses the returned result to show its own
+  // success/error state instead of a hardcoded setTimeout.
   const onMoneySent = async (amount, curr, note) => {
     if (!conversationId) return { ok: false, kind: 'no_conversation' };
 
     const orderRes = await createPaypalOrder({
-      conversationId, receiverId: cid, amount, currencyCode: curr.code, note,
+      conversationId,
+      receiverId: cid,
+      amount,
+      currencyCode: curr.code,
+      note,
     });
     if (!orderRes.ok || !orderRes.data?.approveUrl) {
       return { ok: false, kind: orderRes.kind || 'create_failed' };
     }
 
     const browserResult = await WebBrowser.openAuthSessionAsync(
-      orderRes.data.approveUrl, 'qualysbridge://paypal-return'
+      orderRes.data.approveUrl,
+      'qualysbridge://paypal-return'
     );
-    if (browserResult.type !== 'success') return { ok: false, kind: 'cancelled' };
+    if (browserResult.type !== 'success') {
+      return { ok: false, kind: 'cancelled' };
+    }
 
     const captureRes = await capturePaypalOrder({ orderId: orderRes.data.orderId });
-    if (!captureRes.ok) return { ok: false, kind: captureRes.kind || 'capture_failed' };
+    if (!captureRes.ok) {
+      return { ok: false, kind: captureRes.kind || 'capture_failed' };
+    }
 
     if (captureRes.data?.ok) setShowMoney(false);
     return { ok: !!captureRes.data?.ok, kind: captureRes.data?.ok ? undefined : 'declined' };
@@ -422,41 +517,17 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   const trustColor = { mutual: C.money, pending: C.warn, new: C.warn }[trust] ?? C.warn;
   const trustLabel = { mutual: 'Mutual', pending: 'Pending', new: 'New' }[trust] ?? 'New';
 
-  const dayLabel = (ts) => {
-    const d = new Date(ts);
-    const today = new Date();
-    const yest = new Date(today); yest.setDate(yest.getDate() - 1);
-    if (d.toDateString() === today.toDateString()) return 'Today';
-    if (d.toDateString() === yest.toDateString()) return 'Yesterday';
-    return d.toLocaleDateString('en', { month: 'short', day: 'numeric', year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
-  };
-
-  const listData = useMemo(() => {
-    const out = [];
-    let lastDay = null;
-    msgs.forEach((m, i) => {
-      const ts = m.created_at ? new Date(m.created_at).getTime() : Date.now();
-      const day = new Date(ts).toDateString();
-      if (day !== lastDay) {
-        out.push({ id: `divider_${day}`, __divider: true, label: dayLabel(ts) });
-        lastDay = day;
-      }
-      const next = msgs[i + 1];
-      const isLastInGroup = !next || next.sender_id !== m.sender_id || new Date(next.created_at).toDateString() !== day;
-      out.push({ ...m, __isLastInGroup: isLastInGroup });
-    });
-    if (typing) out.push({ id: '__typing', type: '__typing' });
-    return out;
-  }, [msgs, typing]);
-
   if (showMoney) return (
     <SendMoneyScreen contact={contact} myUser={myUser} onBack={() => setShowMoney(false)} onSent={onMoneySent} />
   );
 
-  const renderMsg = ({ item: m }) => {
+  const renderMsg = ({ item: m, index }) => {
     const fromMe = m.sender_id === myUser.id;
+    // FIX: m.created_at is what the DB actually returns (an ISO string) —
+    // m.ts never existed. ago() wants epoch ms, so convert once here and
+    // reuse below instead of repeating new Date(...).getTime().
     const ts = m.created_at ? new Date(m.created_at).getTime() : Date.now();
-    const grouped = m.__isLastInGroup === false;
+    const grouped = m.__isLastInGroup === false; // tighter gap when another bubble from the same run follows
     return (
       <View style={[ms.msgRow, fromMe ? ms.msgRowMe : ms.msgRowThem, grouped && ms.msgRowGrouped]}>
         {m.transfer_amount != null && (
@@ -474,12 +545,17 @@ export default function ChatScreen({ contact, myUser, onBack }) {
         {m.type === 'voice' && <VoiceNote msg={{ ...m, duration: m.voice_duration_seconds, waveform: m.voice_waveform }} fromMe={fromMe} contactColor={contact.color} />}
         {m.type === 'image' && <ImageBubble msg={m} fromMe={fromMe} onExpand={setLightbox} caption={isEncryptedPayload(m.body) ? decrypted[m.id] : null} />}
         {m.type === 'video' && <VideoBubble msg={m} fromMe={fromMe} onPlay={setVideoPlay} caption={isEncryptedPayload(m.body) ? decrypted[m.id] : null} />}
+        {/* FIX: was `!m.transfer && !m.type` — the real `message` row always
+            has `type` set (defaults to 'text', never null), so that
+            condition was always false and this bubble never rendered for
+            any message. The real signal for "plain text" is type === 'text'. */}
         {m.type === 'text' && (
           <LinearGradient
             colors={fromMe ? [C.accent, C.accentL] : [C.s2, C.s2]}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
             style={[ms.bubble, fromMe ? ms.bubbleMe : ms.bubbleThem]}
           >
+            {/* FIX: was m.text — the column is `body`. */}
             <Text style={[ms.bubbleText, fromMe ? { color: '#fff' } : { color: C.text }]}>
               {isEncryptedPayload(m.body) ? (decrypted[m.id] ?? '🔒 Decrypting...') : m.body}
             </Text>
@@ -492,12 +568,17 @@ export default function ChatScreen({ contact, myUser, onBack }) {
                   {m.read ? '✓✓' : '✓'}
                 </Text>
               )}
+              {/* FIX: was m.selfDestruct — the column is self_destruct_option. */}
               {m.self_destruct_option && (
                 <Text style={ms.metaBomb}>💣{m.self_destruct_option}</Text>
               )}
             </View>
           </LinearGradient>
         )}
+        {/* FIX: was `m.type || m.transfer` — m.type is always truthy now, so
+            this used to render under every message including text ones
+            (which already get their own meta row above). Now correctly
+            scoped to "anything that isn't the plain-text bubble". */}
         {m.type !== 'text' && (
           <View style={[ms.mediaMeta, fromMe ? ms.mediaMetaMe : ms.mediaMetaThem]}>
             <Text style={ms.metaTime}>{ago(ts)}</Text>
@@ -510,6 +591,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
 
   return (
     <View style={[cs.container, { paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={cs.header}>
         <IBtn icon="‹" onPress={onBack} />
         <Av name={contact.name} color={contact.color} avatarUrl={contact.avatarUrl} size={52} online={online.on} />
@@ -528,7 +610,10 @@ export default function ChatScreen({ contact, myUser, onBack }) {
           </TouchableOpacity>
           <IBtn icon="📞" onPress={() => startOutgoingCall(contact.id, conversationId, 'voice', contact)} />
           <IBtn icon="📹" onPress={() => startOutgoingCall(contact.id, conversationId, 'video', contact)} />
-          <IBtn icon={blocked ? '🔓' : '🚫'} danger={!blocked} onPress={toggleBlock} />
+          <IBtn
+            icon={blocked ? '🔓' : '🚫'} danger={!blocked}
+            onPress={toggleBlock}
+          />
           <IBtn icon="🚩" danger onPress={() => setShowRep(true)} />
         </View>
       </View>
@@ -539,6 +624,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
         <WallNotice left={wallLeft} walled={walled} name={contact.name} />
       )}
 
+      {/* Messages */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -546,7 +632,6 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       >
         <FlatList
           ref={flatRef}
-          style={{ flex: 1 }}
           data={listData}
           keyExtractor={(m) => m.id}
           keyboardShouldPersistTaps="handled"
@@ -583,6 +668,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
           onContentSizeChange={() => flatRef.current?.scrollToEnd({ animated: false })}
         />
 
+        {/* Destruct strip */}
         <View style={ds.strip}>
           <Text style={{ fontSize: 11, flexShrink: 0 }}>💣</Text>
           <Text style={ds.label}>AUTO-DELETE</Text>
@@ -600,12 +686,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
 
         {showAttach && <AttachTray onImage={sendImage} onVideo={sendVideo} onClose={() => setShowAttach(false)} />}
         {recording  && <VoiceRecorder onSend={sendVoice} onCancel={() => setRecording(false)} />}
-        {uploading && (
-          <View style={ib.pendingWrap}>
-            <Pulse size={11} label="Uploading…" />
-          </View>
-        )}
-        {!uploading && pendingAttachment && (
+        {pendingAttachment && (
           <View style={ib.pendingWrap}>
             <Image source={{ uri: pendingAttachment.asset.uri }} style={ib.pendingThumb} contentFit="cover" />
             <Text style={ib.pendingLabel}>
@@ -617,6 +698,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
           </View>
         )}
 
+        {/* Input bar */}
         {!recording && (
           <View style={[ib.bar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
             <TouchableOpacity
@@ -671,8 +753,16 @@ export default function ChatScreen({ contact, myUser, onBack }) {
             <Text style={cs.blockedSub}>Tap 🔓 to unblock.</Text>
           </View>
         )}
+        {/* FIX: sendError was set inside sendMessage on any failure but was
+            never rendered — the user had no indication their message didn't
+            send. Now shown as a dismissible banner above the input bar for
+            all send types (text, voice, image, video, transfer). */}
         {!!sendError && !blocked && (
-          <TouchableOpacity onPress={() => setSendError(null)} style={cs.sendErrorBar} activeOpacity={0.8}>
+          <TouchableOpacity
+            onPress={() => setSendError(null)}
+            style={cs.sendErrorBar}
+            activeOpacity={0.8}
+          >
             <Text style={cs.sendErrorText}>
               {sendError === 'blocked' ? `Can't send — you or ${contact.name.split(' ')[0]} has blocked the other.`
                 : sendError === 'no_keys' ? 'Encryption keys not ready yet — try again in a moment.'
@@ -683,6 +773,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
         )}
       </KeyboardAvoidingView>
 
+      {/* Overlays */}
       {showRep && <ReportModal contact={contact} myUser={myUser} onClose={() => setShowRep(false)} />}
       {lightbox  && <Lightbox msg={lightbox} onClose={() => setLightbox(null)} />}
       {videoPlay && <VideoPlayer msg={videoPlay} onClose={() => setVideoPlay(null)} />}
@@ -724,9 +815,9 @@ const cs = StyleSheet.create({
 });
 
 const ms = StyleSheet.create({
-  list:      { padding: 14, gap: 2, flexGrow: 1 },
+  list:      { padding: 14, gap: 2 },
   msgRow:    { flexDirection: 'column', marginBottom: 10 },
-  msgRowGrouped: { marginBottom: 3 },
+  msgRowGrouped: { marginBottom: 3 }, // tighter gap between consecutive same-sender bubbles
   msgRowMe:  { alignItems: 'flex-end' },
   msgRowThem:{ alignItems: 'flex-start' },
   dayDivider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 14 },
@@ -827,4 +918,17 @@ const at = StyleSheet.create({
   btn:      { flex: 1, alignItems: 'center', gap: 5, paddingVertical: 10, borderRadius: 14, backgroundColor: C.s2, borderWidth: 1, borderColor: C.border },
   label:    { fontSize: 10, fontWeight: '600', color: C.sub, letterSpacing: 0.5 },
   closeBtn: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, borderColor: C.border, backgroundColor: C.s2, alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
+});
+
+const co = StyleSheet.create({
+  overlay:      { ...StyleSheet.absoluteFillObject, zIndex: 800, backgroundColor: C.bg, alignItems: 'center' },
+  status:       { fontSize: 11, color: C.sub, letterSpacing: 1, marginTop: 60, marginBottom: 8 },
+  name:         { fontSize: 26, fontWeight: '800', color: C.text, letterSpacing: -0.5, marginBottom: 6 },
+  subLabel:     { fontSize: 12, color: C.sub, marginBottom: 8 },
+  videoPreview: { width: 280, height: 180, borderRadius: 20, backgroundColor: C.s2, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  pip:          { position: 'absolute', bottom: 10, right: 10, width: 72, height: 54, borderRadius: 12, backgroundColor: C.s3, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  controls:     { flexDirection: 'row', justifyContent: 'center', gap: 20, padding: 24, paddingBottom: 52, width: '100%' },
+  controlItem:  { alignItems: 'center', gap: 8 },
+  controlBtn:   { width: 58, height: 58, borderRadius: 29, backgroundColor: C.s2, borderWidth: 1.5, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  controlLabel: { fontSize: 9, color: C.dim, letterSpacing: 0.5 },
 });
