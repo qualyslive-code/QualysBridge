@@ -140,11 +140,7 @@ function OneOnOneBody({ call, insets }) {
   const hasFullscreenVideo = display.mode === 'video' && remoteStream;
 
   return (
-    <TouchableOpacity
-      activeOpacity={1}
-      style={[cs.overlay, { paddingTop: insets.top }]}
-      onPress={() => setShowControls((v) => !v)}
-    >
+    <View style={[cs.overlay, { paddingTop: insets.top }]}>
       {hasFullscreenVideo && (
         <RTCView streamURL={remoteStream.toURL()} style={cs.remoteVideo} objectFit="cover" />
       )}
@@ -175,7 +171,7 @@ function OneOnOneBody({ call, insets }) {
           {CONTROLS.map(({ icon, label, action, active, end, disabled }) => (
             <View key={label} style={cs.controlItem}>
               <TouchableOpacity
-                onPress={(e) => { e.stopPropagation?.(); action(); }}
+                onPress={action}
                 disabled={disabled}
                 style={[
                   cs.controlBtn,
@@ -192,7 +188,16 @@ function OneOnOneBody({ call, insets }) {
           ))}
         </View>
       )}
-    </TouchableOpacity>
+
+      {/* Invisible tap-to-toggle layer, sits BEHIND all real content above
+          (rendered first would sit on top — instead this is positioned via
+          zIndex:-1 so real buttons always win touch priority). */}
+      <TouchableOpacity
+        style={[StyleSheet.absoluteFill, { zIndex: -1 }]}
+        activeOpacity={1}
+        onPress={() => setShowControls((v) => !v)}
+      />
+    </View>
   );
 }
 
@@ -228,11 +233,7 @@ function GroupCallBody({ group, insets }) {
   ];
 
   return (
-    <TouchableOpacity
-      activeOpacity={1}
-      style={[cs.overlay, { paddingTop: insets.top }]}
-      onPress={() => setShowControls((v) => !v)}
-    >
+    <View style={[cs.overlay, { paddingTop: insets.top }]}>
       <Text style={cs.status}>GROUP CALL · {tileCount}/{MAX_PARTICIPANTS}</Text>
 
       <View style={cs.grid}>
@@ -268,7 +269,7 @@ function GroupCallBody({ group, insets }) {
           {CONTROLS.map(({ icon, label, action, active, end }) => (
             <View key={label} style={cs.controlItem}>
               <TouchableOpacity
-                onPress={(e) => { e.stopPropagation?.(); action(); }}
+                onPress={action}
                 style={[cs.controlBtn, end && { backgroundColor: C.danger }, active && !end && { backgroundColor: C.accentD, borderColor: C.borderM }]}
                 activeOpacity={0.8}
               >
@@ -279,12 +280,18 @@ function GroupCallBody({ group, insets }) {
           ))}
         </View>
       )}
-    </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[StyleSheet.absoluteFill, { zIndex: -1 }]}
+        activeOpacity={1}
+        onPress={() => setShowControls((v) => !v)}
+      />
+    </View>
   );
 }
 
 const cs = StyleSheet.create({
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: C.bg, alignItems: 'center', paddingBottom: 40, zIndex: 999, elevation: 999 },
+  overlay: { flex: 1, backgroundColor: C.bg, alignItems: 'center', paddingBottom: 40 },
   remoteVideo: { ...StyleSheet.absoluteFillObject },
   status: { color: C.sub, fontSize: 13, letterSpacing: 1, marginTop: 60, marginBottom: 4 },
   statusPulse: { marginTop: 60, marginBottom: 4 },

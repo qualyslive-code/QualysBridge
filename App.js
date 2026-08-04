@@ -20,8 +20,8 @@ import { supabase } from './src/lib/supabase';
 import { createSessionFromUrl } from './src/lib/authSession';
 import { retryEnsureKeyPair } from './src/lib/e2e';
 import { registerPushToken } from './src/lib/pushToken';
-import { CallProvider } from './src/lib/CallContext';
-import { GroupCallProvider } from './src/lib/GroupCallContext';
+import { CallProvider, useCallContext } from './src/lib/CallContext';
+import { GroupCallProvider, useGroupCallContext } from './src/lib/GroupCallContext';
 
 import LoginScreen           from './src/screens/LoginScreen';
 import { ProfileSetupScreen, QIDRevealScreen } from './src/screens/ProfileSetupScreen';
@@ -35,6 +35,19 @@ import SelfNotesScreen       from './src/screens/SelfNotesScreen';
 import BrandSplashScreen     from './src/screens/BrandSplashScreen';
 
 SplashScreen.preventAutoHideAsync();
+
+// Decides what actually fills the screen right now. A call takes over the
+// same way settings/chat/home already do — a plain swap of what's
+// rendered inside the one flex:1 root View — instead of being layered on
+// top as a separate absolutely-positioned overlay. This has to live here,
+// inside CallProvider/GroupCallProvider, because that's the only place
+// useCallContext()/useGroupCallContext() are actually valid to call.
+function ActiveScreen({ content }) {
+  const { activeCall } = useCallContext();
+  const { room } = useGroupCallContext();
+  if (activeCall || room) return <CallScreen />;
+  return content;
+}
 
 // Maps a raw app_user row (snake_case, from the database) into exactly the
 // shape every screen already expects (camelCase: displayName, qid, color,
@@ -241,11 +254,10 @@ export default function App() {
       <CallProvider myUser={user}>
         <GroupCallProvider myUser={user}>
           <View style={s.root} onLayout={onLayoutRoot}>
-            {content}
+            <ActiveScreen content={content} />
           </View>
           <IncomingCallOverlay />
           <GroupCallInviteOverlay />
-          <CallScreen />
         </GroupCallProvider>
       </CallProvider>
     </SafeAreaProvider>
