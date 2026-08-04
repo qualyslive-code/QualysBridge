@@ -28,10 +28,9 @@ import { ProfileSetupScreen, QIDRevealScreen } from './src/screens/ProfileSetupS
 import HomeScreen            from './src/screens/HomeScreen';
 import ChatScreen            from './src/screens/ChatScreen';
 import SettingsScreen        from './src/screens/SettingsScreen';
-import CallOverlay           from './src/screens/CallOverlay';
-import GroupCallOverlay      from './src/screens/GroupCallOverlay';
 import GroupCallInviteOverlay from './src/screens/GroupCallInviteOverlay';
 import IncomingCallOverlay   from './src/screens/IncomingCallOverlay';
+import CallScreen            from './src/screens/CallScreen';
 import SelfNotesScreen       from './src/screens/SelfNotesScreen';
 import BrandSplashScreen     from './src/screens/BrandSplashScreen';
 
@@ -75,7 +74,7 @@ export default function App() {
   useEffect(() => {
     if (step === 'home') {
       setShowBrandSplash(true);
-      const t = setTimeout(() => setShowBrandSplash(false), 2600);
+      const t = setTimeout(() => setShowBrandSplash(false), 1400);
       return () => clearTimeout(t);
     }
   }, [step]);
@@ -245,9 +244,8 @@ export default function App() {
             {content}
           </View>
           <IncomingCallOverlay />
-          <CallOverlay />
           <GroupCallInviteOverlay />
-          <GroupCallOverlay />
+          <CallScreen />
         </GroupCallProvider>
       </CallProvider>
     </SafeAreaProvider>

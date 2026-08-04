@@ -3,14 +3,14 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput,
-  TouchableOpacity, Image,
+  TouchableOpacity, Modal, Pressable, RefreshControl, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FlashList } from '@shopify/flash-list';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, F } from '../theme';
-import { Av, Tag, Hr } from '../components/atoms';
+import { Av, Tag, IBtn, Hr } from '../components/atoms';
 import { AddContactModal } from './ModalsAndOverlays';
 import { supabase } from '../lib/supabase';
 import { ago } from '../utils';
@@ -23,6 +23,8 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
   const [onlines,  setOnlines]  = useState({});
   const [showGroupPicker, setShowGroupPicker] = useState(false);
   const [groupSelected,   setGroupSelected]   = useState([]);
+  const [showQID, setShowQID] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const { startGroupCall, MAX_PARTICIPANTS } = useGroupCallContext();
   const insets = useSafeAreaInsets();
 
@@ -96,6 +98,17 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
   }, [loadConversations]);
 
   const totalUnread = useMemo(() => contacts.reduce((s, c) => s + (c.unread ?? 0), 0), [contacts]);
+
+  const copyQID = useCallback(async () => {
+    if (user?.qid) await Clipboard.setStringAsync(user.qid);
+  }, [user?.qid]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadConversations();
+    setRefreshing(false);
+  }, [loadConversations]);
+
   const filtered    = useMemo(() =>
     contacts.filter((c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -192,15 +205,13 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
 
   return (
     <View style={[hs.container, { paddingTop: insets.top }]}>
-      {/* App bar — all four actions (Notebook, Group call, Settings, Add)
-          now share one uniform icon-button style (hs.iconBtn) so none of
-          them reads as "more important" than the others via size or a
-          highlighted background. Notebook moved up here from its old
-          standalone row below the app bar. */}
+      {/* App bar */}
       <View style={hs.appBar}>
         <View style={hs.appBarLeft}>
-          <Image source={require('../../assets/icon.png')} style={hs.logoMark} resizeMode="cover" />
-          <Text style={hs.appTitle} numberOfLines={1}>QualysBridge</Text>
+          <LinearGradient colors={[C.accent, C.accentL]} style={hs.logoMark}>
+            <Text style={hs.logoQ}>Q</Text>
+          </LinearGradient>
+          <Text style={hs.appTitle}>Qualys</Text>
           {totalUnread > 0 && (
             <View style={hs.unreadBadge}>
               <Text style={hs.unreadText}>{totalUnread}</Text>
@@ -208,24 +219,26 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
           )}
         </View>
         <View style={hs.appBarRight}>
-          <TouchableOpacity onPress={onOpenSelfNotes} style={hs.iconBtn} activeOpacity={0.8}>
-            <Text style={hs.iconBtnText}>📒</Text>
+          <TouchableOpacity onPress={() => setShowQID(true)} style={hs.qidBtn} activeOpacity={0.8}>
+            <Text style={hs.qidBtnText}>◈</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => { setGroupSelected([]); setShowGroupPicker(true); }}
-            style={hs.iconBtn}
-            activeOpacity={0.8}
-          >
-            <Text style={hs.iconBtnText}>🎥</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onOpenSettings} style={hs.iconBtn} activeOpacity={0.8}>
-            <Text style={hs.iconBtnText}>⚙️</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowAdd(true)} style={hs.iconBtn} activeOpacity={0.8}>
-            <Text style={hs.iconBtnText}>＋</Text>
+          <IBtn icon="⚙️" onPress={onOpenSettings} />
+          <TouchableOpacity onPress={() => setShowAdd(true)} style={hs.addBtn} activeOpacity={0.85}>
+            <LinearGradient colors={[C.accent, C.accentL]} style={hs.addBtnInner}>
+              <Text style={hs.addBtnText}>＋ Add</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Notes to Self */}
+      <TouchableOpacity onPress={onOpenSelfNotes} style={hs.selfNotesRow} activeOpacity={0.7}>
+        <Av name={user.displayName} color={user.color} avatarUrl={user.avatarUrl} size={40} />
+        <View style={{ flex: 1 }}>
+          <Text style={hs.selfNotesTitle}>Notes to Self</Text>
+          <Text style={hs.selfNotesSub}>Private — only visible to you</Text>
+        </View>
+      </TouchableOpacity>
 
       {/* Search */}
       <View style={hs.searchWrap}>
@@ -259,6 +272,9 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
         style={{ flex: 1 }}
         contentContainerStyle={listData.length === 0 ? hs.emptyWrap : undefined}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={C.sub} colors={[C.accent]} />
+        }
         ListEmptyComponent={
           <View style={{ alignItems: 'center', padding: 52 }}>
             <Text style={{ fontSize: 36, marginBottom: 16, opacity: 0.4 }}>💬</Text>
@@ -273,6 +289,40 @@ export default function HomeScreen({ user, onLogout, onOpenChat, onOpenSettings,
           </View>
         }
       />
+
+      {contacts.length > 0 && (
+        <TouchableOpacity
+          style={[hs.fab, { bottom: insets.bottom + 20 }]}
+          onPress={() => { setGroupSelected([]); setShowGroupPicker(true); }}
+          activeOpacity={0.85}
+        >
+          <LinearGradient colors={[C.accent, C.accentL]} style={hs.fabInner}>
+            <Text style={hs.fabIcon}>🎥</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
+
+      <Modal visible={showQID} transparent animationType="fade" onRequestClose={() => setShowQID(false)}>
+        <Pressable style={hs.qidModalOverlay} onPress={() => setShowQID(false)}>
+          <View style={hs.qidModalCard} onStartShouldSetResponder={() => true}>
+            <View style={hs.qidModalHeader}>
+              <Text style={hs.qidModalTitle}>Your QID</Text>
+              <TouchableOpacity onPress={() => setShowQID(false)}>
+                <Text style={hs.qidModalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <Av name={user?.displayName || 'You'} color={user?.color || C.accentD} avatarUrl={user?.avatarUrl} size={64} />
+            <Text style={hs.qidModalName}>{user?.displayName}</Text>
+            <View style={hs.qidModalCode}>
+              <Text style={hs.qidModalCodeText} numberOfLines={2}>{user?.qid || 'No QID set'}</Text>
+            </View>
+            <TouchableOpacity onPress={copyQID} style={hs.qidModalCopy} activeOpacity={0.8}>
+              <Text style={hs.qidModalCopyText}>📋 Copy QID</Text>
+            </TouchableOpacity>
+            <Text style={hs.qidModalHint}>Share this with others to connect</Text>
+          </View>
+        </Pressable>
+      </Modal>
 
       {showAdd && (
         <AddContactModal
@@ -353,27 +403,54 @@ const hs = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12,
   },
-  appBarLeft:  { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, overflow: 'hidden' },
-  appBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
-  logoMark: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  appBarLeft:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  appBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logoMark: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   logoQ:    { fontSize: 16, fontWeight: '800', color: '#fff' },
-  appTitle: { fontSize: 19, fontWeight: '800', color: C.text, letterSpacing: -0.3, flexShrink: 1 },
+  appTitle: { fontSize: 22, fontWeight: '800', color: C.text, letterSpacing: -0.5 },
   unreadBadge: {
     backgroundColor: C.accent, borderRadius: 9,
-    paddingHorizontal: 9, paddingVertical: 2, flexShrink: 0,
+    paddingHorizontal: 9, paddingVertical: 2,
   },
   unreadText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  addBtn:      { overflow: 'hidden', borderRadius: 19 },
+  addBtnInner: { height: 38, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  addBtnText:  { color: '#fff', fontSize: 13, fontWeight: '700' },
 
-  // Uniform icon-button style shared by Notebook, Group call, Settings, and
-  // Add — same size, same background/border, same icon size. Nothing is
-  // gradient-filled or larger than the rest, so no single action reads as
-  // "primary" by default.
-  iconBtn: {
-    width: 38, height: 38, borderRadius: 19,
+  qidBtn: {
+    width: 34, height: 34, borderRadius: 10,
     backgroundColor: C.s2, borderWidth: 1, borderColor: C.border,
     alignItems: 'center', justifyContent: 'center',
   },
-  iconBtnText: { fontSize: 16, color: C.text },
+  qidBtnText: { fontSize: 16, color: C.accent },
+
+  fab: {
+    position: 'absolute', right: 20, width: 56, height: 56, borderRadius: 28,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
+  },
+  fabInner: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 28 },
+  fabIcon: { fontSize: 24 },
+
+  qidModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },
+  qidModalCard: {
+    width: '85%', maxWidth: 360, backgroundColor: C.s1, borderRadius: 20,
+    borderWidth: 1, borderColor: C.border, padding: 20, alignItems: 'center', gap: 12,
+  },
+  qidModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 4 },
+  qidModalTitle: { fontSize: 18, fontWeight: '700', color: C.text },
+  qidModalClose: { fontSize: 18, color: C.sub, padding: 4 },
+  qidModalName: { fontSize: 16, fontWeight: '600', color: C.text },
+  qidModalCode: { backgroundColor: C.s2, borderRadius: 12, padding: 12, width: '100%', borderWidth: 1, borderColor: C.border },
+  qidModalCodeText: {
+    fontSize: 14, color: C.text, textAlign: 'center', letterSpacing: 0.5,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  qidModalCopy: {
+    paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10,
+    backgroundColor: C.accent + '20', borderWidth: 1, borderColor: C.accent + '30',
+  },
+  qidModalCopyText: { fontSize: 13, color: C.accent, fontWeight: '600' },
+  qidModalHint: { fontSize: 11, color: C.dim, textAlign: 'center' },
 
   qidCard: {
     marginHorizontal: 16, borderRadius: 20, overflow: 'hidden',
@@ -391,9 +468,16 @@ const hs = StyleSheet.create({
   qidBody:   { padding: 12, paddingHorizontal: 16 },
   qidValue:  { fontSize: 15, fontWeight: '600', color: C.text, letterSpacing: 2 },
 
+  selfNotesRow: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    marginHorizontal: 16, marginBottom: 14, padding: 12, paddingHorizontal: 14,
+    backgroundColor: C.s1, borderRadius: 16, borderWidth: 1, borderColor: C.borderM,
+  },
+  selfNotesTitle: { fontSize: 14, fontWeight: "600", color: C.text },
+  selfNotesSub: { fontSize: 11, color: C.dim, marginTop: 1 },
   searchWrap: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: 14, marginTop: 4, marginBottom: 10,
+    marginHorizontal: 14, marginBottom: 10,
     padding: 10, paddingHorizontal: 14,
     backgroundColor: C.s2, borderRadius: 20, borderWidth: 1, borderColor: C.border,
   },

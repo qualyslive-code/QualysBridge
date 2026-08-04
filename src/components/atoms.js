@@ -5,7 +5,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Animated,
+  View, Text, TouchableOpacity, StyleSheet, Animated, Easing,
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -185,6 +185,70 @@ export const IBtn = ({ icon, onPress, active = false, danger = false }) => {
 export const Spin = () => (
   <ActivityIndicator size="small" color={C.accentL} style={{ marginRight: 6 }} />
 );
+
+// ── PULSE ─────────────────────────────────────────────────────────────────────
+// A slow breathing dot with two staggered rings expanding outward from it —
+// for moments where someone is genuinely waiting on something real (a call
+// connecting, a message sending, media uploading), not a spinner that just
+// tells you the app hasn't frozen. Defaults to C.warn — the same amber
+// already used for "Pending"/"New" tags elsewhere, so it reads as an
+// intentional part of this app rather than a borrowed effect.
+//
+// Usage:
+//   <Pulse />                                  — bare dot, default size/color
+//   <Pulse size={18} label="Connecting…" />     — with a caption alongside it
+//   <Pulse color={C.money} size={12} />         — recolor for other contexts
+export const Pulse = ({ size = 14, color = C.warn, label, style }) => {
+  const ring1 = useRef(new Animated.Value(0)).current;
+  const ring2 = useRef(new Animated.Value(0)).current;
+  const breathe = useRef(new Animated.Value(0.55)).current;
+
+  useEffect(() => {
+    const ringLoop = (val, delay) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(val, { toValue: 1, duration: 2000, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+          Animated.timing(val, { toValue: 0, duration: 0, useNativeDriver: true }),
+        ])
+      );
+    const r1 = ringLoop(ring1, 0);
+    const r2 = ringLoop(ring2, 1000);
+    const b = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathe, { toValue: 1, duration: 1300, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 0.55, duration: 1300, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+    r1.start(); r2.start(); b.start();
+    return () => { r1.stop(); r2.stop(); b.stop(); };
+  }, []);
+
+  const ringStyle = (val) => ({
+    position: 'absolute',
+    width: size, height: size, borderRadius: size / 2,
+    borderWidth: 1.5, borderColor: color,
+    opacity: val.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] }),
+    transform: [{ scale: val.interpolate({ inputRange: [0, 1], outputRange: [1, 2.4] }) }],
+  });
+
+  return (
+    <View style={[{ flexDirection: 'row', alignItems: 'center', gap: label ? 10 : 0 }, style]}>
+      <View style={{ width: size * 2.4, height: size * 2.4, alignItems: 'center', justifyContent: 'center' }}>
+        <Animated.View style={ringStyle(ring1)} />
+        <Animated.View style={ringStyle(ring2)} />
+        <Animated.View
+          style={{
+            width: size, height: size, borderRadius: size / 2, backgroundColor: color,
+            opacity: breathe,
+            shadowColor: color, shadowOpacity: 0.9, shadowRadius: size * 0.8, shadowOffset: { width: 0, height: 0 },
+          }}
+        />
+      </View>
+      {label && <Text style={{ fontSize: 12, color: C.dim, letterSpacing: 0.3 }}>{label}</Text>}
+    </View>
+  );
+};
 
 // ── DIVIDER ───────────────────────────────────────────────────────────────────
 export const Hr = ({ indent = 0 }) => (

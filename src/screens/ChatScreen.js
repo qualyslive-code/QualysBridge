@@ -1,15 +1,22 @@
 // QualysBridge — ChatScreen
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput,
-  TouchableOpacity, KeyboardAvoidingView, Platform, Animated, Dimensions,
+  TouchableOpacity, KeyboardAvoidingView, Platform, Animated,
+  LayoutAnimation, UIManager,
 } from 'react-native';
+
+// One-time opt-in for Android's LayoutAnimation — iOS has it on by default.
+// Gives new/incoming messages a soft slide-in instead of popping in place.
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, DESTRUCT } from '../theme';
-import { Av, Tag, IBtn, E2EBar, Typing, WallNotice, TCard } from '../components/atoms';
+import { Av, Tag, IBtn, E2EBar, Typing, WallNotice, TCard, Pulse } from '../components/atoms';
 import { useCallContext } from '../lib/CallContext';
 import {
   VoiceNote, ImageBubble, VideoBubble, Lightbox, VideoPlayer,
@@ -18,7 +25,6 @@ import { ReportModal, SendMoneyScreen } from './ModalsAndOverlays';
 import { supabase } from '../lib/supabase';
 import { File } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
-import * as VideoThumbnails from 'expo-video-thumbnails';
 import { encryptMessage, decryptMessage, isEncryptedPayload } from '../lib/e2e';
 import { createPaypalOrder, capturePaypalOrder, getMediaUploadUrl } from '../lib/api';
 import * as ImagePicker from 'expo-image-picker';
@@ -40,22 +46,6 @@ const DEMO_VIDEOS = [
   { vidEmoji: '🎵', vidGradient: ['#1a0533', '#3d0b69'], duration: '0:12' },
   { vidEmoji: '🏖️', vidGradient: ['#1a3a4e', '#0d6e8a'], duration: '0:08' },
 ];
-
-// Generates a local JPEG thumbnail from a video file URI using
-// expo-video-thumbnails. Returns null (never throws) on failure so callers
-// can fall back to the gradient placeholder instead of blocking the send.
-async function generateVideoThumbnail(videoUri) {
-  try {
-    const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, {
-      time: 1500, // 1.5s into the clip — skips black/blank opening frames
-      quality: 0.7,
-    });
-    return uri;
-  } catch (err) {
-    console.warn('[ChatScreen] thumbnail generation failed:', err);
-    return null;
-  }
-}
 
 // ── VOICE RECORDER BAR ────────────────────────────────────────────────────────
 function VoiceRecorder({ onSend, onCancel }) {
@@ -134,6 +124,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   const [msgs,       setMsgs]       = useState([]);
   const [input,      setInput]      = useState('');
   const [pendingAttachment, setPendingAttachment] = useState(null); // { type: 'image'|'video', asset }
+  const [uploading, setUploading] = useState(false);
   const [typing,     setTyping]     = useState(false); // no longer driven by simReply — left wired for a future real typing-indicator channel
   const [destruct,   setDestruct]   = useState('Off');
   const [blocked,    setBlocked]    = useState(false);
@@ -153,29 +144,42 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   const [decrypted, setDecrypted] = useState({});
   const flatRef = useRef(null);
   const insets  = useSafeAreaInsets();
-  // DEBUG: react-native-safe-area-context has been reported to return an
-  // inflated `top` inset on some Android edge-to-edge configs/OEM skins,
-  // which would produce exactly the large blank gap seen above the header.
-  // Clamp to a sane max so the UI stays usable either way, and surface the
-  // raw value on-screen (not gated behind __DEV__, since this is a
-  // production APK build) so we can see the actual number without a
-  // second rebuild. Remove SHOW_INSET_DEBUG + the debug badge below once
-  // this is confirmed and a permanent fix is in.
-  const SHOW_INSET_DEBUG = true;
-  const topPad = Math.min(insets.top, 48);
-  // DEBUG: insets.top came back as a normal 32 — not the cause. Measuring
-  // actual on-screen y/height of each section directly instead of guessing
-  // further, so the next report tells us exactly where the extra space
-  // lives instead of us hypothesizing again.
-  const [dbg, setDbg] = useState({});
-  const screenH = Dimensions.get('window').height;
-  const mkOnLayout = (label) => (e) => {
-    const { y, height } = e.nativeEvent.layout;
-    setDbg((prev) => ({ ...prev, [label]: `y${Math.round(y)}/h${Math.round(height)}` }));
-  };
 
   const walled   = !theyReplied && sentCount >= 3;
   const wallLeft = 3 - sentCount;
+
+  // ── Presentational grouping: day dividers + "last in a run" flag ─────────
+  // Pure derived view over msgs — never touches the actual message data or
+  // any of the send/receive logic above. A run is consecutive messages from
+  // the same sender with no other sender's message between them; only the
+  // last message in a run gets its full meta row treated as "primary" so
+  // grouped bubbles can sit tighter without losing per-message timestamps.
+  const dayLabel = (ts) => {
+    const d = new Date(ts);
+    const today = new Date();
+    const yest = new Date(today); yest.setDate(yest.getDate() - 1);
+    if (d.toDateString() === today.toDateString()) return 'Today';
+    if (d.toDateString() === yest.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString('en', { month: 'short', day: 'numeric', year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+  };
+
+  const listData = useMemo(() => {
+    const out = [];
+    let lastDay = null;
+    msgs.forEach((m, i) => {
+      const ts = m.created_at ? new Date(m.created_at).getTime() : Date.now();
+      const day = new Date(ts).toDateString();
+      if (day !== lastDay) {
+        out.push({ id: `divider_${day}`, __divider: true, label: dayLabel(ts) });
+        lastDay = day;
+      }
+      const next = msgs[i + 1];
+      const isLastInGroup = !next || next.sender_id !== m.sender_id || new Date(next.created_at).toDateString() !== day;
+      out.push({ ...m, __isLastInGroup: isLastInGroup });
+    });
+    if (typing) out.push({ id: '__typing', type: '__typing' });
+    return out;
+  }, [msgs, typing]);
 
   // ── Load conversation + initial state ─────────────────────────────────────
   useEffect(() => {
@@ -288,6 +292,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   }, []);
 
   useEffect(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 60);
   }, [msgs, typing]);
 
@@ -327,7 +332,9 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       const caption = input.trim();
       setPendingAttachment(null);
       setInput('');
+      setUploading(true);
       await uploadAndSend({ type, asset, caption });
+      setUploading(false);
       return;
     }
     const t = input.trim();
@@ -367,27 +374,6 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     // rendered in the input bar area below (same as the text-send error).
   };
 
-  // Shared helper: uploads a local file URI to the given signed Storage
-  // path/token via expo-file-system's File.upload() (BINARY_CONTENT mode).
-  // Used for both the main media file and (for videos) the generated
-  // thumbnail JPEG, since both go through the same signed-upload flow.
-  const uploadFileToPath = async (fileUri, path, token, contentType) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-    const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/upload/sign/qualys-family-media/${path}?token=${token}`;
-    const file = new File(fileUri);
-    return file.upload(uploadUrl, {
-      httpMethod: 'PUT',
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${session?.access_token || anonKey}`,
-        'content-type': contentType,
-        'cache-control': 'max-age=3600',
-        'x-upsert': 'false',
-      },
-    });
-  };
-
   // Real picker + upload: asks the bridge for a signed Storage URL, PUTs
   // the file straight to Supabase Storage via uploadToSignedUrl, then
   // passes the returned `path` through to send_message as
@@ -418,9 +404,22 @@ export default function ChatScreen({ contact, myUser, onBack }) {
       mp4: 'video/mp4', mov: 'video/quicktime', m4a: 'audio/m4a',
     };
     const contentType = CONTENT_TYPES[fileExt] || 'application/octet-stream';
+    const { data: { session } } = await supabase.auth.getSession();
+    const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+    const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/upload/sign/qualys-family-media/${path}?token=${token}`;
     let uploadResult;
     try {
-      uploadResult = await uploadFileToPath(asset.uri, path, token, contentType);
+      const file = new File(asset.uri);
+      uploadResult = await file.upload(uploadUrl, {
+        httpMethod: 'PUT',
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${session?.access_token || anonKey}`,
+          'content-type': contentType,
+          'cache-control': 'max-age=3600',
+          'x-upsert': 'false',
+        },
+      });
     } catch (err) {
       setSendError(err.message || 'Upload failed');
       return;
@@ -428,29 +427,6 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     if (!uploadResult || uploadResult.status < 200 || uploadResult.status >= 300) {
       setSendError('Upload failed');
       return;
-    }
-
-    // For videos: generate a local thumbnail and upload it too, best-effort.
-    // Failure here never blocks the send — VideoBubble already falls back
-    // to the gradient placeholder when video_thumb_url is null.
-    let thumbPath = null;
-    if (type === 'video') {
-      const thumbUri = await generateVideoThumbnail(asset.uri);
-      if (thumbUri) {
-        const thumbRes = await getMediaUploadUrl({ conversationId, fileExt: 'jpg' });
-        if (thumbRes.ok) {
-          try {
-            const thumbUpload = await uploadFileToPath(
-              thumbUri, thumbRes.data.path, thumbRes.data.token, 'image/jpeg'
-            );
-            if (thumbUpload && thumbUpload.status >= 200 && thumbUpload.status < 300) {
-              thumbPath = thumbRes.data.path;
-            }
-          } catch (err) {
-            console.warn('[ChatScreen] thumbnail upload failed:', err);
-          }
-        }
-      }
     }
 
     const trimmedCaption = caption?.trim();
@@ -474,7 +450,6 @@ export default function ChatScreen({ contact, myUser, onBack }) {
         p_type: 'video', p_body: bodyToSend,
         p_video_asset_url: path,
         p_video_duration_label: `0:${String(durSec).padStart(2, '0')}`,
-        p_video_thumb_url: thumbPath,
       });
     }
   };
@@ -555,8 +530,9 @@ export default function ChatScreen({ contact, myUser, onBack }) {
     // m.ts never existed. ago() wants epoch ms, so convert once here and
     // reuse below instead of repeating new Date(...).getTime().
     const ts = m.created_at ? new Date(m.created_at).getTime() : Date.now();
+    const grouped = m.__isLastInGroup === false; // tighter gap when another bubble from the same run follows
     return (
-      <View style={[ms.msgRow, fromMe ? ms.msgRowMe : ms.msgRowThem]}>
+      <View style={[ms.msgRow, fromMe ? ms.msgRowMe : ms.msgRowThem, grouped && ms.msgRowGrouped]}>
         {m.transfer_amount != null && (
           <TCard
             data={{
@@ -617,16 +593,9 @@ export default function ChatScreen({ contact, myUser, onBack }) {
   };
 
   return (
-    <View style={[cs.container, { paddingTop: topPad }]} onLayout={mkOnLayout('container')}>
-      {SHOW_INSET_DEBUG && (
-        <View style={cs.debugBadge} pointerEvents="none">
-          <Text style={cs.debugBadgeText}>
-            top={insets.top} scr={Math.round(screenH)} cont={dbg.container} hdr={dbg.header} e2e={dbg.e2e} kav={dbg.kav} list={dbg.list}
-          </Text>
-        </View>
-      )}
+    <View style={[cs.container, { paddingTop: insets.top }]}>
       {/* Header */}
-      <View style={cs.header} onLayout={mkOnLayout('header')}>
+      <View style={cs.header}>
         <IBtn icon="‹" onPress={onBack} />
         <Av name={contact.name} color={contact.color} avatarUrl={contact.avatarUrl} size={52} online={online.on} />
         <View style={{ flex: 1, overflow: 'hidden' }}>
@@ -652,9 +621,7 @@ export default function ChatScreen({ contact, myUser, onBack }) {
         </View>
       </View>
 
-      <View onLayout={mkOnLayout('e2e')}>
-        <E2EBar />
-      </View>
+      <E2EBar />
 
       {!theyReplied && sentCount > 0 && (
         <WallNotice left={wallLeft} walled={walled} name={contact.name} />
@@ -665,16 +632,23 @@ export default function ChatScreen({ contact, myUser, onBack }) {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : insets.top + 64}
-        onLayout={mkOnLayout('kav')}
       >
         <FlatList
           ref={flatRef}
-          onLayout={mkOnLayout('list')}
-          data={[...msgs, ...(typing ? [{ id: '__typing', type: '__typing' }] : [])]}
+          data={listData}
           keyExtractor={(m) => m.id}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={ms.list}
           renderItem={({ item }) => {
+            if (item.__divider) {
+              return (
+                <View style={ms.dayDivider}>
+                  <View style={ms.dayDividerLine} />
+                  <Text style={ms.dayDividerText}>{item.label}</Text>
+                  <View style={ms.dayDividerLine} />
+                </View>
+              );
+            }
             if (item.type === '__typing') {
               return (
                 <View style={ms.typingRow}>
@@ -715,7 +689,12 @@ export default function ChatScreen({ contact, myUser, onBack }) {
 
         {showAttach && <AttachTray onImage={sendImage} onVideo={sendVideo} onClose={() => setShowAttach(false)} />}
         {recording  && <VoiceRecorder onSend={sendVoice} onCancel={() => setRecording(false)} />}
-        {pendingAttachment && (
+        {uploading && (
+          <View style={ib.pendingWrap}>
+            <Pulse size={11} label="Uploading…" />
+          </View>
+        )}
+        {!uploading && pendingAttachment && (
           <View style={ib.pendingWrap}>
             <Image source={{ uri: pendingAttachment.asset.uri }} style={ib.pendingThumb} contentFit="cover" />
             <Text style={ib.pendingLabel}>
@@ -812,19 +791,15 @@ export default function ChatScreen({ contact, myUser, onBack }) {
 
 const cs = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
-  debugBadge: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 9999,
-    backgroundColor: '#ff0040', paddingVertical: 4, paddingHorizontal: 4,
-    alignItems: 'center',
-  },
-  debugBadgeText: { color: '#fff', fontSize: 8, fontWeight: '700', textAlign: 'center' },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 14,
     borderBottomWidth: 1, borderBottomColor: C.border,
     backgroundColor: C.s1,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6,
+    elevation: 3,
   },
-  headerName:    { fontSize: 17, fontWeight: '700', color: C.text, flex: 1 },
+  headerName:    { fontSize: 17, fontWeight: '700', color: C.text, flex: 1, letterSpacing: -0.2 },
   headerStatus:  { fontSize: 12, marginTop: 3 },
   headerActions: { flexDirection: 'row', gap: 8 },
   moneyBtn: {
@@ -850,11 +825,18 @@ const cs = StyleSheet.create({
 const ms = StyleSheet.create({
   list:      { padding: 14, gap: 2 },
   msgRow:    { flexDirection: 'column', marginBottom: 10 },
+  msgRowGrouped: { marginBottom: 3 }, // tighter gap between consecutive same-sender bubbles
   msgRowMe:  { alignItems: 'flex-end' },
   msgRowThem:{ alignItems: 'flex-start' },
-  bubble:    { maxWidth: '76%', padding: 12, paddingHorizontal: 16 },
-  bubbleMe:  { borderRadius: 18, borderTopRightRadius: 4 },
-  bubbleThem:{ borderRadius: 18, borderTopLeftRadius: 4, borderWidth: 1, borderColor: C.border },
+  dayDivider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 14 },
+  dayDividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: C.border },
+  dayDividerText: { fontSize: 11, fontWeight: '600', color: C.dim, letterSpacing: 0.4 },
+  bubble:    {
+    maxWidth: '76%', padding: 12, paddingHorizontal: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3,
+  },
+  bubbleMe:  { borderRadius: 20, borderTopRightRadius: 5 },
+  bubbleThem:{ borderRadius: 20, borderTopLeftRadius: 5, borderWidth: 1, borderColor: C.border },
   bubbleText:{ fontSize: 15, lineHeight: 22 },
   bubbleMeta:{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 5, marginTop: 5 },
   metaTime:  { fontSize: 9 },
@@ -914,6 +896,8 @@ const ib = StyleSheet.create({
   sendBtn: {
     width: 42, height: 42, borderRadius: 21,
     alignItems: 'center', justifyContent: 'center',
+    shadowColor: C.accent, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.35, shadowRadius: 5,
+    elevation: 3,
   },
   micBtn: {
     width: 42, height: 42, borderRadius: 21,
